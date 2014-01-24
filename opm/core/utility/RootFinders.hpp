@@ -61,6 +61,12 @@ namespace Opm
                   << std::max(x0, x1) << "]");
             return -1e100; // Never reached.
         }
+        static double handleTooManyIterationsNewton(const double x, const int maxiter)
+        {
+			OPM_THROW(std::runtime_error, "Maximum number of iterations exceeded: " << maxiter << "\n"
+				<< "Current best guess is " << x << "\n");
+            return -1e100; // Never reached.
+		}
     };
 
 
@@ -80,6 +86,12 @@ namespace Opm
                     << std::max(x0, x1) << "]");
             return 0.5*(x0 + x1);
         }
+        static double handleTooManyIterationsNewton(const double x, const int maxiter)
+        {
+			OPM_MESSAGE("Maximum number of iterations exceeded: " << maxiter << "\n"
+				<< "Current best guess is " << x << "\n");
+            return x;
+		}
     };
 
 
@@ -93,8 +105,55 @@ namespace Opm
         {
             return 0.5*(x0 + x1);
         }
+        static double handleTooManyIterationsNewton(const double x, const int /*maxiter*/)
+        {
+            return x;
+		}
     };
 
+    template <class ErrorPolicy = ThrowOnError>
+    class NewtonRaphson
+    {
+		public:
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a,
+                                   const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+        {
+            double x = initial_guess;
+            iterations_used = 0;
+            
+            while (fabs(f(x)) > tolerance)
+            {
+				// Scalar Newton's method
+				x = x - f(x)/f.ds(x);
+				
+				++iterations_used;
+				// Handle iteration overflow
+				if (iterations_used > max_iter) {
+                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter);
+                }
+			}
+            return x;
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double a,
+                                   const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+		{
+			double initial_guess = (a+b)/2.0;
+			return solve(f,initial_guess,a,b,max_iter,tolerance,iterations_used);
+		}
+	};
 
 
     template <class ErrorPolicy = ThrowOnError>

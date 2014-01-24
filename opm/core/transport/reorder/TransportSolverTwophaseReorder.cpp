@@ -40,7 +40,8 @@ namespace Opm
 {
 
     // Choose error policy for scalar solves here.
-    typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
+    //typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
+    typedef NewtonRaphson<ThrowOnError> RootFinder;
 
 
     TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
@@ -57,8 +58,10 @@ namespace Opm
           dt_(0.0),
           saturation_(grid.number_of_cells, -1.0),
           fractionalflow_(grid.number_of_cells, -1.0),
+          fractionalflowderivative_(grid.number_of_cells, -1.0),
           reorder_iterations_(grid.number_of_cells, 0),
-          mob_(2*grid.number_of_cells, -1.0)
+          mob_(2*grid.number_of_cells, -1.0),
+          dmob_(2*grid.number_of_cells, -1.0)
 #ifdef EXPERIMENT_GAUSS_SEIDEL
         , ia_upw_(grid.number_of_cells + 1, -1),
           ja_upw_(grid.number_of_faces, -1),
@@ -138,6 +141,7 @@ namespace Opm
         int cell;
         double s0;
         double influx;    // sum_j min(v_ij, 0)*f(s_j) + q_w
+        double dinflux;   // sum_j min(v_ij, 0)*dfds(s_j) + q_w
         double outflux;   // sum_j max(v_ij, 0) - q
         double comp_term; // q - sum_j v_ij
         double dtpv;    // dt/pv(i)
@@ -151,6 +155,7 @@ namespace Opm
             double src_flux       = -tm.source_[cell];
             bool src_is_inflow = src_flux < 0.0;
             influx  =  src_is_inflow ? src_flux : 0.0;
+            dinflux = 0.0;
             outflux = !src_is_inflow ? src_flux : 0.0;
             dtpv    = tm.dt_/tm.porevolume_[cell];
 
@@ -172,6 +177,7 @@ namespace Opm
                 if (other != -1) {
                     if (flux < 0.0) {
                         influx  += flux*tm.fractionalflow_[other];
+                        dinflux += flux*tm.fractionalflowderivative_[other];
                     } else {
                         outflux += flux;
                     }
@@ -183,6 +189,11 @@ namespace Opm
         {
             return s - s0 + dtpv*(outflux*tm.fracFlow(s, cell) + influx);
         }
+        double ds(double s) const
+        {
+			return 1 + dtpv*(dinflux + outflux*tm.fracFlowDerivative(s,cell));
+		}
+        
     };
 
 
@@ -199,122 +210,11 @@ namespace Opm
         // add if it is iteration on an out loop
         reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
+        fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
     }
-
-    // namespace {
-    //  class TofComputer
-    //  {
-    //  public:
-    //      TofComputer(const int num_cells,
-    //                  const int* ia,
-    //                  const int* ja,
-    //                  const int startcell,
-    //                  std::vector<int>& tof)
-    //          : ia_(ia),
-    //            ja_(ja)
-    //      {
-    //          tof.clear();
-    //          tof.resize(num_cells, num_cells);
-    //          tof[startcell] = 0;
-    //          tof_ = &tof[0];
-    //          visitTof(startcell);
-    //      }
-
-    //  private:
-    //      const int* ia_;
-    //      const int* ja_;
-    //      int* tof_;
-
-    //      void visitTof(const int cell)
-    //      {
-    //          for (int j = ia_[cell]; j < ia_[cell+1]; ++j) {
-    //              const int nb_cell = ja_[j];
-    //              if (tof_[nb_cell] > tof_[cell] + 1) {
-    //                  tof_[nb_cell] = tof_[cell] + 1;
-    //                  visitTof(nb_cell);
-    //              }
-    //          }
-    //      }
-
-    //  };
-    // } // anon namespace
-
 
     void TransportSolverTwophaseReorder::solveMultiCell(const int num_cells, const int* cells)
     {
-        // std::ofstream os("dump");
-        // std::copy(cells, cells + num_cells, std::ostream_iterator<double>(os, "\n"));
-
-        // Experiment: try a breath-first search to build a more suitable ordering.
-        // Verdict: failed to improve #iterations.
-        // {
-        //     std::vector<int> pos(grid_.number_of_cells, -1);
-        //     for (int i = 0; i < num_cells; ++i) {
-        //      const int cell = cells[i];
-        //      pos[cell] = i;
-        //     }
-        //     std::vector<int> done_pos(num_cells, 0);
-        //     std::vector<int> upstream_pos;
-        //     std::vector<int> new_pos;
-        //     upstream_pos.push_back(0);
-        //     done_pos[0] = 1;
-        //     int current = 0;
-        //     while (int(new_pos.size()) < num_cells) {
-        //      const int i = upstream_pos[current++];
-        //      new_pos.push_back(i);
-        //      const int cell = cells[i];
-        //      for (int j = ia_[cell]; j < ia_[cell+1]; ++j) {
-        //          const int opos = pos[ja_[j]];
-        //          if (!done_pos[opos]) {
-        //              upstream_pos.push_back(opos);
-        //              done_pos[opos] = 1;
-        //          }
-        //      }
-        //     }
-        //     std::reverse(new_pos.begin(), new_pos.end());
-        //     std::copy(new_pos.begin(), new_pos.end(), const_cast<int*>(cells));
-        // }
-
-        // Experiment: try a random ordering.
-        // Verdict: amazingly, reduced #iterations by approx. 25%!
-        // int* c = const_cast<int*>(cells);
-        // std::random_shuffle(c, c + num_cells);
-
-        // Experiment: compute topological tof from first cell.
-        // Verdict: maybe useful, not tried to exploit it yet.
-        // std::vector<int> tof;
-        // TofComputer comp(grid_.number_of_cells, &ia_[0], &ja_[0], cells[0], tof);
-        // std::ofstream tofdump("tofdump");
-        // std::copy(tof.begin(), tof.end(), std::ostream_iterator<double>(tofdump, "\n"));
-
-        // Experiment: implement a metric measuring badness of ordering
-        //             as average distance in (cyclic) ordering from
-        //             upstream neighbours.
-        // Verdict: does not seem to predict #iterations very well, if at all.
-        // std::vector<int> pos(grid_.number_of_cells, -1);
-        // for (int i = 0; i < num_cells; ++i) {
-        //     const int cell = cells[i];
-        //     pos[cell] = i;
-        // }
-        // double diffsum = 0;
-        // for (int i = 0; i < num_cells; ++i) {
-        //     const int cell = cells[i];
-        //     int num_upstream = 0;
-        //     int loc_diffsum = 0;
-        //     for (int j = ia_[cell]; j < ia_[cell+1]; ++j) {
-        //      const int opos = pos[ja_[j]];
-        //      if (opos == -1) {
-        //          std::cout << "Hmmm" << std::endl;
-        //          continue;
-        //      }
-        //      ++num_upstream;
-        //      const int diff = (i - opos + num_cells) % num_cells;
-        //      loc_diffsum += diff;
-        //     }
-        //     diffsum += double(loc_diffsum)/double(num_upstream);
-        // }
-        // std::cout << "Average distance from upstream neighbours: " << diffsum/double(num_cells)
-        //        << std::endl;
 
 #ifdef EXPERIMENT_GAUSS_SEIDEL
         // Experiment: when a cell changes more than the tolerance,
@@ -339,45 +239,18 @@ namespace Opm
         std::vector<double> s0(num_cells);
         // Must set initial fractional flows before we start.
         // Also, we compute the # of upstream neighbours.
-        // std::vector<int> num_upstream(num_cells);
         for (int i = 0; i < num_cells; ++i) {
             const int cell = cells[i];
             fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
+            fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
             s0[i] = saturation_[cell];
-            // num_upstream[i] = ia_upw_[cell + 1] - ia_upw_[cell];
         }
         // Solve once in each cell.
-        // std::vector<int> fully_marked_stack;
-        // fully_marked_stack.reserve(num_cells);
         int num_iters = 0;
         int update_count = 0; // Change name/meaning to cells_updated?
         do {
             update_count = 0; // Must reset count for every iteration.
             for (int i = 0; i < num_cells; ++i) {
-                // while (!fully_marked_stack.empty()) {
-                //     // std::cout << "# fully marked cells = " << fully_marked_stack.size() << std::endl;
-                //     const int fully_marked_ci = fully_marked_stack.back();
-                //     fully_marked_stack.pop_back();
-                //     ++update_count;
-                //     const int cell = cells[fully_marked_ci];
-                //     const double old_s = saturation_[cell];
-                //     saturation_[cell] = s0[fully_marked_ci];
-                //     solveSingleCell(cell);
-                //     const double s_change = std::fabs(saturation_[cell] - old_s);
-                //     if (s_change > tol) {
-                //      // Mark downwind cells.
-                //      for (int j = ia_downw_[cell]; j < ia_downw_[cell+1]; ++j) {
-                //          const int downwind_cell = ja_downw_[j];
-                //          int ci = pos[downwind_cell];
-                //          ++needs_update[ci];
-                //          if (needs_update[ci] == num_upstream[ci]) {
-                //              fully_marked_stack.push_back(ci);
-                //          }
-                //      }
-                //     }
-                //     // Unmark this cell.
-                //     needs_update[fully_marked_ci] = 0;
-                // }
                 if (!needs_update[i]) {
                     continue;
                 }
@@ -395,18 +268,11 @@ namespace Opm
                         if (ci != -1) {
                             needs_update[ci] = 1;
                         }
-                        // ++needs_update[ci];
-                        // if (needs_update[ci] == num_upstream[ci]) {
-                        //     fully_marked_stack.push_back(ci);
-                        // }
                     }
                 }
                 // Unmark this cell.
                 needs_update[i] = 0;
             }
-            // std::cout << "Iter = " << num_iters << "    update_count = " << update_count
-            //        << "    # marked cells = "
-            //        << std::accumulate(needs_update.begin(), needs_update.end(), 0) << std::endl;
         } while (update_count > 0 && ++num_iters < max_iters);
 
         // Done with iterations, check if we succeeded.
@@ -428,6 +294,7 @@ namespace Opm
         for (int i = 0; i < num_cells; ++i) {
             const int cell = cells[i];
             fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
+            fractionalflowderivative__[cell] = fracFlowDerivative(saturation_[cell], cell);
             s0[i] = saturation_[cell];
         }
         do {
@@ -464,10 +331,24 @@ namespace Opm
         mob[1] /= visc_[1];
         return mob[0]/(mob[0] + mob[1]);
     }
-
-
-
-
+    
+    double TransportSolverTwophaseReorder::fracFlowDerivative(double s, int cell) const
+    {
+		double sat[2] = {s, 1.0 - s};
+		double mob[2]; 
+		double dmob[4];
+		double smob, sdmob;
+		
+		props_.relperm(1, sat, &cell, mob, dmob);
+		
+		mob[0] /= visc_[0]; mob[1] /= visc_[1];
+		smob =  mob[0] + mob[1];
+		
+		dmob[0] /= visc_[0]; dmob[3] /= visc_[1];
+		sdmob =  dmob[0] + dmob[3];
+		
+		return (dmob[0]*smob + mob[0]*sdmob)/(smob*smob);
+	}
 
     // Residual function r(s) for a single-cell implicit Euler gravity segregation
     //
@@ -508,7 +389,7 @@ namespace Opm
         {
             double res = s - s0;
             double mobcell[2];
-            tm.mobility(s, cell, mobcell);
+            tm.mobility(s, cell, mobcell,0);
             for (int nb = 0; nb < 2; ++nb) {
                 if (nbcell[nb] != -1) {
                     double m[2];
@@ -526,17 +407,52 @@ namespace Opm
             }
             return res;
         }
+        double ds(double s) const
+        {
+			double res = 1;
+            double mobcell[2];
+            double dmobcell[2];
+            tm.mobility(s, cell, mobcell, dmobcell);
+            for (int nb = 0; nb < 2; ++nb) {
+                if (nbcell[nb] != -1) {
+                    double m[2];
+                    double dm[2];
+                    if (gf[nb] < 0.0) {
+                        m[0] = mobcell[0];
+                        m[1] = tm.mob_[2*nbcell[nb] + 1];
+                        dm[0] = dmobcell[0];
+                        dm[1] = tm.dmob_[2*nbcell[nb] + 1];
+                    } else {
+                        m[0] = tm.mob_[2*nbcell[nb]];
+                        m[1] = mobcell[1];
+                        dm[0] = tm.dmob_[2*nbcell[nb]];
+                        dm[1] = dmobcell[1];
+                    }
+                    double msum = m[0] + m[1];
+                    if (msum > 0.0) {
+                        //res += -dtpv*gf[nb]*m[0]*m[1]/msum;
+                        res += -dtpv*gf[nb]*( (dm[0]*m[0]+m[0]*dm[1])*msum + (dm[0]+dm[1])*m[0]*m[1] )/( msum*msum );
+                    }
+                }
+            }
+            return res;
+		}
     };
 
-    void TransportSolverTwophaseReorder::mobility(double s, int cell, double* mob) const
+    void TransportSolverTwophaseReorder::mobility(double s, int cell, double* mob, double* dmob) const
     {
         double sat[2] = { s, 1.0 - s };
-        props_.relperm(1, sat, &cell, mob, 0);
+        double dmobtemp[4];
+        props_.relperm(1, sat, &cell, mob, dmobtemp);
         mob[0] /= visc_[0];
         mob[1] /= visc_[1];
+        
+        if(dmob != 0)
+        {
+			dmob[0] = dmobtemp[0]/visc_[0];
+			dmob[1] = dmobtemp[3]/visc_[1];
+		}
     }
-
-
 
     void TransportSolverTwophaseReorder::initGravity(const double* grav)
     {
@@ -560,14 +476,10 @@ namespace Opm
         }
     }
 
-
-
     void TransportSolverTwophaseReorder::initColumns()
     {
         extractColumn(grid_, columns_);
     }
-
-
 
     void TransportSolverTwophaseReorder::solveSingleCellGravity(const std::vector<int>& cells,
                                                                 const int pos,
@@ -581,10 +493,8 @@ namespace Opm
             reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         }
         saturation_[cell] = std::min(std::max(saturation_[cell], smin_[2*cell]), smax_[2*cell]);
-        mobility(saturation_[cell], cell, &mob_[2*cell]);
+        mobility(saturation_[cell], cell, &mob_[2*cell], &dmob_[2*cell]);
     }
-
-
 
     int TransportSolverTwophaseReorder::solveGravityColumn(const std::vector<int>& cells)
     {
@@ -637,8 +547,6 @@ namespace Opm
         return num_iters + 1;
     }
 
-
-
     void TransportSolverTwophaseReorder::solveGravity(const double* porevolume,
                                                       const double dt,
                                                       TwophaseState& state)
@@ -650,11 +558,15 @@ namespace Opm
             cells[c] = c;
         }
         mob_.resize(2*nc);
-        props_.relperm(cells.size(), &state.saturation()[0], &cells[0], &mob_[0], 0);
+        dmob_.resize(2*nc);
+        double dmobtemp[4*nc];
+        props_.relperm(cells.size(), &state.saturation()[0], &cells[0], &mob_[0], dmobtemp);
         const double* mu = props_.viscosity();
         for (int c = 0; c < nc; ++c) {
             mob_[2*c] /= mu[0];
             mob_[2*c + 1] /= mu[1];
+            dmob_[2*c] = dmobtemp[4*c + 0]/mu[0];
+            dmob_[2*c+1] = dmobtemp[4*c + 3]/mu[1];
         }
 
         // Set up other variables.
