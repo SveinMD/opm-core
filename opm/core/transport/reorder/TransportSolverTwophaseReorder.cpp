@@ -40,8 +40,8 @@ namespace Opm
 {
 
     // Choose error policy for scalar solves here.
-    //typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
-    typedef NewtonRaphson<ThrowOnError> RootFinder;
+    typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
+    //typedef NewtonRaphson<ThrowOnError> RootFinder;
 
 
     TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
@@ -183,6 +183,18 @@ namespace Opm
                     }
                 }
             }
+            
+            double xval;
+            double xmin = 0; double xmax = 1;
+            int n_points = 150;
+            std::ofstream file;
+            file.open("fractional_flow.txt");
+            for ( int i = 0; i <= n_points; i++)
+            {
+				xval = (xmax-xmin)/n_points*i;
+				file << xval << "\t" << tm.fracFlow(xval,cell) << "\t" << tm.fracFlowDerivative(xval,cell) << "\n";
+			}
+			file.close();
 
         }
         double operator()(double s) const
@@ -191,7 +203,10 @@ namespace Opm
         }
         double ds(double s) const
         {
-			return 1 + dtpv*(dinflux + outflux*tm.fracFlowDerivative(s,cell));
+			//return 1 + dtpv*(dinflux + outflux*tm.fracFlowDerivative(s,cell));
+			
+			return 1 + dtpv*(outflux*tm.fracFlowDerivative(s,cell));
+			
 		}
         
     };
@@ -206,7 +221,14 @@ namespace Opm
         // }
         int iters_used = 0;
         // saturation_[cell] = modifiedRegulaFalsi(res, smin_[2*cell], smax_[2*cell], maxit_, tol_, iters_used);
-        saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
+        
+        saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used); // Commented 27.01.14 - Svein
+        
+        /*double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o. Used for the trust region routine, Svein 27.01.14
+        bool verbose = false;
+        saturation_[cell] = RootFinder::solveDarcyFlowByTrustRegion(res, saturation_[cell], M, maxit_, tol_, verbose, iters_used); // 27.01.14 Svein
+        */
+        
         // add if it is iteration on an out loop
         reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
@@ -344,10 +366,10 @@ namespace Opm
 		mob[0] /= visc_[0]; mob[1] /= visc_[1];
 		smob =  mob[0] + mob[1];
 		
-		dmob[0] /= visc_[0]; dmob[3] /= visc_[1];
+		dmob[0] /= visc_[0]; dmob[3] /= -visc_[1];
 		sdmob =  dmob[0] + dmob[3];
-		
-		return (dmob[0]*smob + mob[0]*sdmob)/(smob*smob);
+		//std::cout << "Mob.: " << mob[0] << ", " << mob[1] << "\ndMob: " << dmob[0] << ", " << dmob[3] << std::endl;
+		return (dmob[0]*smob - mob[0]*sdmob)/(smob*smob);
 	}
 
     // Residual function r(s) for a single-cell implicit Euler gravity segregation

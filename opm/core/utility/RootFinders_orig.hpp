@@ -37,14 +37,11 @@
 #define OPM_ROOTFINDERS_HEADER
 
 #include <opm/core/utility/ErrorMacros.hpp>
-#include <opm/core/utility/StopWatch.hpp>
 
 #include <algorithm>
 #include <limits>
 #include <cmath>
 #include <iostream>
-#include <fstream>
-#include <cstring>
 
 namespace Opm
 {
@@ -64,12 +61,6 @@ namespace Opm
                   << std::max(x0, x1) << "]");
             return -1e100; // Never reached.
         }
-        static double handleTooManyIterationsNewton(const double x, const int maxiter, double funcval)
-        {
-			OPM_THROW(std::runtime_error, "Maximum number of iterations exceeded: " << maxiter << ". "
-				<< "Current best root guess is " << x << " giving function value " << funcval << "\n");
-            return -1e100; // Never reached.
-		}
     };
 
 
@@ -89,12 +80,6 @@ namespace Opm
                     << std::max(x0, x1) << "]");
             return 0.5*(x0 + x1);
         }
-        static double handleTooManyIterationsNewton(const double x, const int maxiter, double funcval)
-        {
-			OPM_MESSAGE("Maximum number of iterations exceeded: " << maxiter << ". "
-				<< "Current best root guess is " << x << " giving function value " << funcval << "\n");
-            return x;
-		}
     };
 
 
@@ -108,203 +93,8 @@ namespace Opm
         {
             return 0.5*(x0 + x1);
         }
-        static double handleTooManyIterationsNewton(const double x, const int /*maxiter*/, double /*funcval*/)
-        {
-            return x;
-		}
     };
 
-    template <class ErrorPolicy = ThrowOnError>
-    class NewtonRaphson
-    {
-		public:
-		
-		template <class Functor>
-		inline static double solveDarcyFlowByTrustRegion(const Functor& f,
-								   const double initial_guess,
-								   const double visc_ratio,
-								   const int max_iter,
-								   const double tolerance,
-								   const bool verbose,
-								   int& iterations_used)
-        {
-            double x = initial_guess;
-            double xNew = initial_guess;
-            double xCorr = initial_guess;
-            iterations_used = 0;
-            
-            /*double thePoint = 0.4;
-            std::string line;
-            std::ifstream infile("pointdata.txt");
-            if(infile.is_open())
-            {
-				if( getline(infile,line) )
-					thePoint = atof(line.c_str());
-				infile.close();
-			}
-			double xval;
-            double xmin = 0; double xmax = 1;
-            int n_points = 150;
-            std::ofstream file;
-            file.open("cell_residual.txt");
-            for ( int i = 0; i <= n_points; i++)
-            {
-				xval = (xmax-xmin)/n_points*i;
-				file << xval << "\t" << f(xval) << "\t" << f.ds(xval) << "\t" << fw(xval,visc_ratio) << "\t" << dfw2(xval,visc_ratio) << "\t" << f(thePoint) + f.ds(thePoint)*(xval-thePoint) << "\n";
-			}
-			file.close();*/
-            
-            if(verbose)
-            std::cout << "----------------------- Newton iteration ---------------------------\n"
-					  << "Initial guess: " << initial_guess << "\n"
-                      << "Max iterations: " << max_iter << "\n"
-                      << "Error tolerance: " << tolerance << "\n"
-                      << "# iter.\tx\t\txCorr\t\tf(x)\t\tf_x(x) \n";
-            
-            //time::StopWatch clock;
-            //clock.start();
-            
-            while (fabs(f(x)) > tolerance)
-            {
-				++iterations_used;
-				if (iterations_used > max_iter)
-                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-                
-				// Scalar Newton's method
-				xNew = x - f(x)/f.ds(x);
-				
-				xCorr = std::max(std::min(xNew,1.0),0.0);
-				if(dfw2(xCorr,visc_ratio)*dfw2(x,visc_ratio) < 0.0)
-					xCorr = (xCorr+x)/2.0;
-				
-				if (verbose)
-					printf("%d\t%8.2e\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,xCorr,f(x),f.ds(x));
-				
-				x = xCorr;
-			}
-			if(verbose)
-				std::cout << "---------------------- End Newton iteration ------------------------\n";
-			
-			//clock.stop();
-			//if(verbose)
-			//	std::cout << "Newton solve took " << clock.secsSinceStart()	<< " seconds\n";
-			
-            return x;
-		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double initial_guess,
-								   const double a,
-                                   const double b,
-								   const int max_iter,
-								   const double tolerance,
-								   int& iterations_used)
-        {
-            double x = initial_guess;
-            double xNew = initial_guess;
-            
-            iterations_used = 0;
-            bool verbose = a < 0.0 && b < 0.0; // TODO: Implement some kind of parameter struct for root finders, e.g. for verbose, iterations, etc.
-            
-            if(verbose)
-            std::cout << "----------------------- Newton iteration ---------------------------\n"
-					  << "Initial guess: " << initial_guess << "\n"
-                      << "Max iterations: " << max_iter << "\n"
-                      << "Error tolerance: " << tolerance << "\n"
-                      << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
-            
-            while (fabs(f(x)) > tolerance)
-            {
-				++iterations_used;
-				if (iterations_used > max_iter)
-                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-                
-				// Scalar Newton's method
-				xNew = x - f(x)/f.ds(x);
-				if (verbose)
-					printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
-				
-				x = xNew;
-			}
-			if(verbose)
-				std::cout << "---------------------- End Newton iteration ------------------------\n";
-				
-            return x;
-		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double initial_guess,
-								   const int max_iter,
-								   const double tolerance,
-								   const bool verbose,
-								   int& iterations_used)
-        {
-            double x = initial_guess;
-            double xNew = initial_guess;
-            double xCorr = initial_guess;
-            iterations_used = 0;
-            
-            if(verbose)
-            std::cout << "----------------------- Newton iteration ---------------------------\n"
-					  << "Initial guess: " << initial_guess << "\n"
-                      << "Max iterations: " << max_iter << "\n"
-                      << "Error tolerance: " << tolerance << "\n"
-                      << "# iter.\tx\t\txCorr\t\tf(x)\t\tf_x(x) \n";
-            
-            while (fabs(f(x)) > tolerance)
-            {
-				++iterations_used;
-				if (iterations_used > max_iter)
-                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-                
-				// Scalar Newton's method
-				xNew = x - f(x)/f.ds(x);
-				
-				xCorr = std::max(std::min(xNew,1.0),0.0);
-				if(f.ds2(xCorr)*f.ds2(x) < 0.0)
-					xCorr = (xCorr+x)/2.0;
-				
-				if (verbose)
-					printf("%d\t%8.2e\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,xCorr,f(x),f.ds(x));
-				
-				x = xCorr;
-			}
-			if(verbose)
-				std::cout << "---------------------- End Newton iteration ------------------------\n";
-				
-            return x;
-		}
-		
-		inline static double fw(double x, double M)
-		{
-			double x2 = pow(x,2.0);
-			return x2/(x2+M*pow((1-x),2.0));
-		}
-		inline static double dfw(double x, double M)
-		{
-			return 2*M*x*(1-x)/pow( M*pow(x-1,2.0) + pow(x,2.0), 2.0);
-		}
-		inline static double dfw2(double x, double M)
-		{
-			double x2 = pow(x,2.0);
-			double xm2 = pow(x-1,2.0);
-			return 2*M*( M*(2*x+1)*xm2 + x2*(2*x-3) )/pow(M*xm2 + x2, 3.0);
-		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double a,
-                                   const double b,
-								   const int max_iter,
-								   const double tolerance,
-								   int& iterations_used)
-		{
-			double initial_guess = (a+b)/2.0;
-			return solve(f,initial_guess,a,b,max_iter,tolerance,iterations_used);
-		}
-	};
 
 
     template <class ErrorPolicy = ThrowOnError>

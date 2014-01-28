@@ -195,6 +195,8 @@ list (APPEND EXAMPLE_SOURCE_FILES
 	tutorials/tutorial2.cpp
 	tutorials/tutorial3.cpp
 	tutorials/tutorial4.cpp
+	examples/test_driver.cpp
+        examples/testCase1.cpp
 	)
 
 # originally generated with the command:
