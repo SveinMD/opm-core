@@ -83,9 +83,68 @@
 /// the transport equation assuming that \f$u\f$ is constant in time in the time step
 /// interval we are considering.
 
-int main ()
+void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & transport_solver, int i, const char solver_type, int num_cells)
+{
+	std::vector<int> iterations = transport_solver.getReorderIterations();
+	std::ostringstream iterfilename;
+    
+	// Set filename and open
+	iterfilename.str(""); 
+	iterfilename << "testCase1_iterations-" << solver_type << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
+	std::ofstream file; file.open(iterfilename.str().c_str());
+	for ( int i = 0; i <= num_cells; i++)
+	{
+		file << i << "\t" << iterations[i] << "\n";
+	}
+	file.close();
+}
+
+int main (int argc, char ** argv)
 try
 {
+	char solver_type = 'r';
+	bool printIterations = false;
+	// Check parameters
+	if(argc > 1)
+	{
+		// -n: Newton solver
+		// -r: Regula Falsi
+		for(int i = 1; i < argc; i++)
+		{
+			if(std::string(argv[i]) == "-n")
+			{
+				std::cout << "Newton solver chosen for single cell problem\n";
+				solver_type = 'n';
+			}
+			else if(std::string(argv[i]) == "-t")
+			{
+				std::cout << "Trust region solver chosen for single cell problem\n";
+				solver_type = 't';
+			}
+			else if(std::string(argv[i]) == "-i")
+			{
+				std::cout << "Ridder's solver chosen for single cell problem\n";
+				solver_type = 'i';
+			}
+			else if(std::string(argv[i]) == "-b")
+			{
+				std::cout << "Brent's solver chosen for single cell problem\n";
+				solver_type = 'b';
+			}
+			else if(std::string(argv[i]) == "-r")
+			{
+				std::cout << "Regula Falsi solver chosen for single cell problem\n";
+				solver_type = 'r';
+			}
+			else if(std::string(argv[i]) == "-p")
+			{
+				printIterations = true;
+			}
+			else
+				std::cerr << "Invalid argument passed to " << argv[0] << "\n";
+		}
+	}
+		
     /// We define the grid. A Cartesian grid with 400 cells,
     /// each being 10m along each side. Note that we treat the
     /// grid as 3-dimensional, but have a thickness of only one
@@ -151,7 +210,8 @@ try
     /// and stored internally by the IncompTpfa class. The null pointer
     /// constructor argument is for wells, which are not used in this tutorial.
     LinearSolverUmfpack linsolver;
-    IncompTpfa psolver(grid, props, linsolver, grav, NULL, src, bcs.c_bcs());
+    IncompTpfa psolver(grid, props,
+ linsolver, grav, NULL, src, bcs.c_bcs());
 
     /// We set up a state object for the wells. Here, there are
     /// no wells and we let it remain empty.
@@ -164,7 +224,7 @@ try
     /// Set up the transport solver. This is a reordering implicit Euler transport solver.
     const double tolerance = 1e-9;
     const int max_iterations = 30;
-    Opm::TransportSolverTwophaseReorder transport_solver(grid, props, NULL, tolerance, max_iterations);
+    Opm::TransportSolverTwophaseReorder transport_solver(grid, props, NULL, tolerance, max_iterations, solver_type);
 
     /// Time integration parameters
     const double dt = 0.1*day;
@@ -186,7 +246,7 @@ try
     /// This string stream will be used to construct a new
     /// output filename at each timestep.
     std::ostringstream vtkfilename;
-
+	
 	time::StopWatch clock;
 	clock.start();
     for (int i = 0; i < num_time_steps; ++i) {
@@ -194,9 +254,12 @@ try
         psolver.solve(dt, state, well_state);
 
         transport_solver.solve(&porevol[0], &src[0], dt, state);
-
+        
+        if (printIterations)
+			printIterationsFromVector(transport_solver, i, solver_type, num_cells);
+			
         vtkfilename.str("");
-        vtkfilename << "tutorial3-" << std::setw(3) << std::setfill('0') << i << ".vtu";
+        vtkfilename << "testCase1-" << solver_type << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
         std::ofstream vtkfile(vtkfilename.str().c_str());
         Opm::DataMap dm;
         dm["saturation"] = &state.saturation();

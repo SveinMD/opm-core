@@ -12,7 +12,7 @@ struct Function1
 {
 	double operator()(double x) const
 	{
-		return exp(x)-exp(1);
+		return exp(x)-exp(1)+0.5;
 	}
 	double ds(double x) const
 	{
@@ -41,7 +41,69 @@ struct Function2
 };
 
 typedef Function2 Function;
-typedef NewtonRaphson<ThrowOnError> RootFinder;
+
+typedef struct ThrowOnError TheErrorPolicy;
+
+/*typedef boost::variant<RegulaFalsi<TheErrorPolicy>*, 
+					   TrustRegion<TheErrorPolicy>*, 
+					   Ridder<TheErrorPolicy>*,
+					   Brent<TheErrorPolicy>*, 
+					   NewtonRaphson<TheErrorPolicy>*> solverVariant;
+
+template <class ErrorPolicy = ThrowOnError>
+class PickSolver
+{
+	public:
+	static solverVariant selectSolver(const char solver_type)
+	{
+		if(solver_type == 'r')
+		{
+			RegulaFalsi<ErrorPolicy> * solver = new RegulaFalsi<ErrorPolicy>();
+			return solver;
+		}
+		else if(solver_type == 't')
+		{
+			TrustRegion<ErrorPolicy> * solver = new TrustRegion<ErrorPolicy>();
+			return solver;
+		}
+		else if(solver_type == 'i')
+		{
+			Ridder<ErrorPolicy> * solver = new Ridder<ErrorPolicy>();
+			return solver;
+		}
+		else if(solver_type == 'b')
+		{
+			Brent<ErrorPolicy> * solver = new Brent<ErrorPolicy>();
+			return solver;
+		}
+		else if(solver_type == 'n')
+		{
+			NewtonRaphson<ErrorPolicy> * solver = new NewtonRaphson<ErrorPolicy>();
+			return solver;
+		}
+		else
+		{
+			RegulaFalsi<ErrorPolicy> * solver = new RegulaFalsi<ErrorPolicy>();
+			return solver;
+		}
+	}
+		
+};*/
+
+/*BaseRootFinder * selectSolver(char solver_type)
+{
+	BaseRootFinder * solver;
+	if(solver_type == 'b')
+	{
+		solver = new Brent<ThrowOnError>(); 
+		return solver;
+	}
+	else if(solver_type == 'i')
+	{
+		solver = new Ridder<ThrowOnError>();
+		return solver;
+	}
+}*/
 
 int main(int argc, char ** argv)
 {
@@ -53,7 +115,7 @@ int main(int argc, char ** argv)
 	double init_guess = 0.1;
 	int max_iter = 20;
 	bool verbose = false;
-	
+	char solver_type = 'r';
 	for(int i = 1; i < argc; i = i+2)
 	{
 		if(std::string(argv[i]) == "-i")
@@ -67,15 +129,55 @@ int main(int argc, char ** argv)
 			verbose = true;
 			--i;
 		}
+		else if(std::string(argv[i]) == "-s")
+		{
+			solver_type = *argv[i+1];
+		}
 		else
-			std::cerr << "Invalid argument passed to" << argv[0] << "\n";
+			std::cerr << "Invalid argument passed to " << argv[0] << "\n";
 	}
 	
 	Function f;
 	int iters_used = 0.0;
-
-	double root = RootFinder::solve(f, init_guess, max_iter, tolerance, verbose, iters_used);
-	std::cout << "A root candidate x = " << root << " was found after " << iters_used << " iterations.\n";
+	double root = -1e100;
+	
+	//solverVariant solver = PickSolver<ThrowOnError>::selectSolver(solver_type); 
+	//BaseRootFinder * solver = selectSolver(solver_type);
+	//root = solver->solve(f, init_guess, 0.0, 1.0, max_iter, tolerance, verbose, iters_used);
+	
+	if(solver_type == 'b')
+	{
+		std::cout << "Brent: \n";
+		root = Brent<TheErrorPolicy>::solve(f, init_guess, 0.0, 1.0, max_iter, tolerance, verbose, iters_used);
+	}
+	else if(solver_type == 't')
+	{
+		std::cout << "Trust Region: \n";
+		root = TrustRegion<TheErrorPolicy>::solve(f, init_guess, max_iter, tolerance, verbose, iters_used);
+	}
+	else if(solver_type == 'r')
+	{
+		std::cout << "Regula Falsi: \n";
+		root = RegulaFalsi<TheErrorPolicy>::solve(f, init_guess, 0.0, 1.0, max_iter, tolerance, iters_used);
+	}
+	else if(solver_type == 'n')
+	{
+		std::cout << "Newton Raphson: \n";
+		root = NewtonRaphson<TheErrorPolicy>::solve(f, init_guess, 0.0, 1.0, max_iter, tolerance, verbose, iters_used);
+	}
+	else if(solver_type == 'i')
+	{
+		std::cout << "Ridder's method: \n";
+		root = Ridder<TheErrorPolicy>::solve(f, init_guess, 0.0, 1.0, max_iter, tolerance, verbose, iters_used);
+	}
+	else
+	{
+		std::cout << "Rergula Falsi(default): \n";
+		root = RegulaFalsi<TheErrorPolicy>::solve(f, init_guess, 0.0, 1.0, max_iter, tolerance, iters_used);
+	}
+	
+	
+	std::cout << "A root x = " << root << " giving f(x) = " << f(root) << " was found after " << iters_used << " iterations.\n";
 	
 	return 0;
 }

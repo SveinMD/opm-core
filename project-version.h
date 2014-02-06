@@ -1,1 +1,1 @@
-#define PROJECT_VERSION "2013.10 (debug)"
+#define PROJECT_VERSION "2013.10 (91de764*)"

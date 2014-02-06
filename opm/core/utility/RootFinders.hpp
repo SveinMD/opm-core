@@ -72,7 +72,6 @@ namespace Opm
 		}
     };
 
-
     struct WarnAndContinueOnError
     {
         static double handleBracketingFailure(const double x0, const double x1, const double f0, const double f1)
@@ -97,7 +96,6 @@ namespace Opm
 		}
     };
 
-
     struct ContinueOnError
     {
         static double handleBracketingFailure(const double x0, const double x1, const double f0, const double f1)
@@ -113,14 +111,341 @@ namespace Opm
             return x;
 		}
     };
-
+    
+    /*class BaseRootFinder
+    {
+		template <class Functor>
+		inline static virtual double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int & iterations_used) = 0;
+	};*/
+    
     template <class ErrorPolicy = ThrowOnError>
-    class NewtonRaphson
+    class Brent //: public virtual BaseRootFinder
     {
 		public:
 		
 		template <class Functor>
-		inline static double solveDarcyFlowByTrustRegion(const Functor& f,
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int & iterations_used)
+        {
+			double xa = a;    double xb = b;    double xc = xa; double xs = 1.0; double xd = 1.0;
+			double fa = f(a); double fb = f(b); double fc = fa; double fs = f(initial_guess);
+			
+			if(fa*fs < 0)
+			{
+				xb = initial_guess;
+				fb = fs;
+			}
+			else if(fb*fs < 0)
+			{
+				xa = initial_guess;
+				fa = fs;
+			}
+			
+			if(fa*fb >= 0)
+			{
+				if ( std::abs(fa) <= tolerance) return xa;
+				else if ( std::abs(fb) <= tolerance) return xb;
+				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
+			}
+			
+			if(verbose)
+				std::cout << "----------------------- Brent's Method iteration ---------------------------\n"
+						<< "Initial guess: " << initial_guess << "\n"
+						<< "Max iterations: " << max_iter << "\n"
+						<< "Error tolerance: " << tolerance << "\n"
+						<< "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
+						
+			if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,fb < fa ? xb : xa,f(fb < fa ? xb : xa));	
+			
+			bool flag = true;
+			for (int i = 0; i < max_iter; i++)
+			{
+				++iterations_used;
+				double fab = fa-fb; 
+				if(fa != fc && fb != fc)
+				{
+					double fac = fa-fc; double fbc = fb-fc;
+					xs = xa*fb*fc/(fab*fac) + xb*fa*fc/(-fab*fbc) + xc*fa*fb/(fac*fbc);
+				}
+				else
+					xs = xb + fb*(xb-xa)/fab;
+				
+				bool sbbc = std::abs(xs-xb) >= std::abs(xb-xc)/2;
+				bool sbcd = std::abs(xs-xb) >= std::abs(xc-xd)/2;
+				bool bct = std::abs(xb-xc) < tolerance;
+				bool cdt = std::abs(xc-xd) < tolerance;
+				double tmp = (3*xa+xb)/4;
+				if( !((xs < tmp && xs > xb) || (xs > tmp && xs < xb)) || (flag && sbbc) || (!flag && sbcd) || (flag && bct) || (!flag && cdt) )
+				{
+					xs = 0.5*(xa+xb); flag = true;
+				}
+				else
+					flag = false;
+					
+				fs = f(xs);
+				
+				if ( std::abs(fs) <= tolerance ) 
+				{
+					if(verbose) std::cout << "----------------------- End Brent's Method iteration ---------------------------\n";
+					return xs;
+				}
+				
+				xd = xc; 
+				xc = xb; fc = fb;
+				
+				if( fa*fs < 0)
+				{
+					xb = xs; fb = fs;
+				}
+				else
+				{
+					xa = xs; fa = fs;
+				}
+				if (std::abs(fa) < std::abs(fb))
+				{
+					double temp = xa;
+					xa = xb;
+					xb = temp;
+					temp = fa;
+					fa = fb;
+					fb = temp;
+				}
+				
+				if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,fs < fb ? xs : xb,f(fs < fb ? xs : xb));
+				
+				if( std::abs(xa-xb) <= tolerance ) 
+				{
+					if(verbose) std::cout << "----------------------- End Brent's Method iteration ---------------------------\n";
+					return fs < fb ? xs : xb;
+				}
+				
+			}
+			return ErrorPolicy::handleTooManyIterationsNewton(xs, max_iter, f(xs));
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+        {
+			return solve(f,0.5*(a+b),a,b,max_iter,tolerance,false,iterations_used);
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+        {
+			return solve(f,initial_guess,a,b,max_iter,tolerance,false,iterations_used);
+		}
+	};
+
+	template <class ErrorPolicy = ThrowOnError>
+	class Ridder //: public virtual BaseRootFinder
+	{
+		public:
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used)
+		{
+			double x = initial_guess;
+			double xa = a;
+			double xb = b;
+			double fa = f(xa); double fb = f(xb);
+			double fnew = f(x);
+			
+			if(fnew*fa < 0)
+				xb = x;
+			else if(fnew*fb < 0)
+				xa = x;
+			
+			if(fa*fb >= 0)
+			{
+				if (std::abs(fa) <= tolerance) return xa;
+				else if (std::abs(fb) <= tolerance) return xb;
+				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
+			}
+			
+			if(verbose)
+				std::cout << "----------------------- Ridder's Method iteration ---------------------------\n"
+						<< "Initial guess: " << initial_guess << "\n"
+						<< "Max iterations: " << max_iter << "\n"
+						<< "Error tolerance: " << tolerance << "\n"
+						<< "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
+            
+            if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,x,f(x));
+			
+			x = -10; // A saturation value always outside bracket
+			for(int i = 0; i < max_iter; i++)
+			{
+				++iterations_used;
+				double xc = 0.5*(xa+xb);
+				double fc = f(xc);
+				double s = sqrt(fc*fc-fa*fb);
+				if (s == 0)
+				{
+					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					return x;
+				}
+				double xnew = xc + (xc-xa)*((fa >= fb ? 1.0 : -1.0)*fc/s);
+				if( std::abs(xnew-x) <= tolerance ) 
+				{
+					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					return x;
+				}
+				x = xnew;
+				fnew = f(x);
+				if( std::abs(fnew) <= tolerance )
+				{
+					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					return x;
+				}
+				if(fc*fnew < 0)
+				{
+					xa = xc; fa = fc;
+					xb = x; fb = fnew;
+				}
+				else if(fa*fnew < 0)
+				{
+					xb = x; fb = fnew;
+				}
+				else if(fb*fnew < 0)
+				{
+					xa = x; fa = fnew;
+				}
+				else
+					std::cerr << "Bracket violation. This should never happen!\n";
+					
+				if(xb < xa)
+				{
+					double temp = xa;
+					xa = xb;
+					xb = temp;
+					temp = fa;
+					fa = fb;
+					fb = temp;
+				}
+				
+				if( std::abs(xb-xa) <= tolerance)
+				{
+					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					return x;
+				}
+				
+				if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,x,f(x),f.ds(x));
+			}
+			
+			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used)
+		{
+			return solve(f,0.5*(a+b),a,b,max_iter,tolerance,verbose,iterations_used);
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+		{
+			return solve(f,0.5*(a+b),a,b,max_iter,tolerance,false,iterations_used);
+		}
+		
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+		{
+			return solve(f,initial_guess,a,b,max_iter,tolerance,false,iterations_used);
+		}
+	};
+	
+	// Trust region solver
+    template <class ErrorPolicy = ThrowOnError>
+    class TrustRegion
+    {
+		public:
+		
+		// Trust region solver
+		// Uses supplied first and second derivatives for trust region scheme
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const int max_iter,
+								   const double tolerance,
+								   const bool verbose,
+								   int& iterations_used)
+        {
+            double x = initial_guess;
+            double xNew = initial_guess;
+            double xCorr = initial_guess;
+            
+            if(verbose)
+            std::cout << "----------------------- Newton Trust Region iteration ---------------------------\n"
+					  << "Initial guess: " << initial_guess << "\n"
+                      << "Max iterations: " << max_iter << "\n"
+                      << "Error tolerance: " << tolerance << "\n"
+                      << "# iter.\tx\t\txCorr\t\tf(x)\t\tf_x(x) \n";
+            
+            while (std::abs(f(x)) > tolerance)
+            {
+				++iterations_used;
+				if (iterations_used > max_iter)
+                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
+                
+				xNew = x - f(x)/f.ds(x);
+				
+				xCorr = std::max(std::min(xNew,1.0),0.0);
+				if(f.ds2(xCorr)*f.ds2(x) < 0.0)
+					xCorr = (xCorr+x)/2.0;
+				
+				if (verbose) printf("%d\t%8.2e\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,xCorr,f(x),f.ds(x));
+				
+				x = xCorr;
+			}
+			if(verbose) std::cout << "---------------------- End Newton Trust Region iteration ------------------------\n";
+				
+            return x;
+		}
+		
+		// Darcy flow trust region solver
+		// Uses supplied viscosity ratio for trust region scheme
+		template <class Functor>
+		inline static double solve(const Functor& f,
 								   const double initial_guess,
 								   const double visc_ratio,
 								   const int max_iter,
@@ -131,7 +456,6 @@ namespace Opm
             double x = initial_guess;
             double xNew = initial_guess;
             double xCorr = initial_guess;
-            iterations_used = 0;
             
             /*double thePoint = 0.4;
             std::string line;
@@ -155,16 +479,13 @@ namespace Opm
 			file.close();*/
             
             if(verbose)
-            std::cout << "----------------------- Newton iteration ---------------------------\n"
+            std::cout << "----------------------- Newton Trust Region iteration ---------------------------\n"
 					  << "Initial guess: " << initial_guess << "\n"
                       << "Max iterations: " << max_iter << "\n"
                       << "Error tolerance: " << tolerance << "\n"
                       << "# iter.\tx\t\txCorr\t\tf(x)\t\tf_x(x) \n";
             
-            //time::StopWatch clock;
-            //clock.start();
-            
-            while (fabs(f(x)) > tolerance)
+            while (std::abs(f(x)) > tolerance)
             {
 				++iterations_used;
 				if (iterations_used > max_iter)
@@ -185,95 +506,6 @@ namespace Opm
 			if(verbose)
 				std::cout << "---------------------- End Newton iteration ------------------------\n";
 			
-			//clock.stop();
-			//if(verbose)
-			//	std::cout << "Newton solve took " << clock.secsSinceStart()	<< " seconds\n";
-			
-            return x;
-		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double initial_guess,
-								   const double a,
-                                   const double b,
-								   const int max_iter,
-								   const double tolerance,
-								   int& iterations_used)
-        {
-            double x = initial_guess;
-            double xNew = initial_guess;
-            
-            iterations_used = 0;
-            bool verbose = a < 0.0 && b < 0.0; // TODO: Implement some kind of parameter struct for root finders, e.g. for verbose, iterations, etc.
-            
-            if(verbose)
-            std::cout << "----------------------- Newton iteration ---------------------------\n"
-					  << "Initial guess: " << initial_guess << "\n"
-                      << "Max iterations: " << max_iter << "\n"
-                      << "Error tolerance: " << tolerance << "\n"
-                      << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
-            
-            while (fabs(f(x)) > tolerance)
-            {
-				++iterations_used;
-				if (iterations_used > max_iter)
-                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-                
-				// Scalar Newton's method
-				xNew = x - f(x)/f.ds(x);
-				if (verbose)
-					printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
-				
-				x = xNew;
-			}
-			if(verbose)
-				std::cout << "---------------------- End Newton iteration ------------------------\n";
-				
-            return x;
-		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double initial_guess,
-								   const int max_iter,
-								   const double tolerance,
-								   const bool verbose,
-								   int& iterations_used)
-        {
-            double x = initial_guess;
-            double xNew = initial_guess;
-            double xCorr = initial_guess;
-            iterations_used = 0;
-            
-            if(verbose)
-            std::cout << "----------------------- Newton iteration ---------------------------\n"
-					  << "Initial guess: " << initial_guess << "\n"
-                      << "Max iterations: " << max_iter << "\n"
-                      << "Error tolerance: " << tolerance << "\n"
-                      << "# iter.\tx\t\txCorr\t\tf(x)\t\tf_x(x) \n";
-            
-            while (fabs(f(x)) > tolerance)
-            {
-				++iterations_used;
-				if (iterations_used > max_iter)
-                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-                
-				// Scalar Newton's method
-				xNew = x - f(x)/f.ds(x);
-				
-				xCorr = std::max(std::min(xNew,1.0),0.0);
-				if(f.ds2(xCorr)*f.ds2(x) < 0.0)
-					xCorr = (xCorr+x)/2.0;
-				
-				if (verbose)
-					printf("%d\t%8.2e\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,xCorr,f(x),f.ds(x));
-				
-				x = xCorr;
-			}
-			if(verbose)
-				std::cout << "---------------------- End Newton iteration ------------------------\n";
-				
             return x;
 		}
 		
@@ -302,7 +534,98 @@ namespace Opm
 								   int& iterations_used)
 		{
 			double initial_guess = (a+b)/2.0;
-			return solve(f,initial_guess,a,b,max_iter,tolerance,iterations_used);
+			return solve(f,initial_guess,max_iter,tolerance,false,iterations_used);
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a,
+                                   const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+		{
+			return solve(f,initial_guess,max_iter,tolerance,false,iterations_used);
+		}
+	};
+
+	// Newton Raphson solver
+    template <class ErrorPolicy = ThrowOnError>
+    class NewtonRaphson
+    {
+		public:
+		// Newton Raphson solver
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a, const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used)
+        {
+            double x = initial_guess;
+            double xNew = initial_guess;
+            
+            if(verbose)
+            std::cout << "----------------------- Newton iteration ---------------------------\n"
+					  << "Initial guess: " << initial_guess << "\n"
+                      << "Max iterations: " << max_iter << "\n"
+                      << "Error tolerance: " << tolerance << "\n"
+                      << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
+            
+            while (std::abs(f(x)) > tolerance)
+            {
+				++iterations_used;
+				if (iterations_used > max_iter)
+                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
+                
+				xNew = x - f(x)/f.ds(x);
+				if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
+				
+				x = xNew;
+			}
+			if(verbose) std::cout << "---------------------- End Newton iteration ------------------------\n";
+				
+            return x;
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double a,
+                                   const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+		{
+			double initial_guess = (a+b)/2.0;
+			return solve(f,initial_guess,a,b,max_iter,tolerance,false,iterations_used);
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double a,
+                                   const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   int& iterations_used)
+		{
+			return solve(f,initial_guess,a,b,max_iter,tolerance,false,iterations_used);
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double a,
+                                   const double b,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used)
+		{
+			double initial_guess = (a+b)/2.0;
+			return solve(f,initial_guess,a,b,max_iter,tolerance,verbose,iterations_used);
 		}
 	};
 
@@ -500,7 +823,6 @@ namespace Opm
 
 
     };
-
 
 
     /// Attempts to find an interval bracketing a zero by successive

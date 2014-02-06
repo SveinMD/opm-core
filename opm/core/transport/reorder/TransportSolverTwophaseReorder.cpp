@@ -41,8 +41,52 @@ namespace Opm
 
     // Choose error policy for scalar solves here.
     typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
-    //typedef NewtonRaphson<ThrowOnError> RootFinder;
+    //typedef NewtonRaphson<WarnAndContinueOnError> RootFinder;
 
+	TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
+                                                                   const Opm::IncompPropertiesInterface& props,
+                                                                   const double* gravity,
+                                                                   const double tol,
+                                                                   const int maxit,
+                                                                   char solver_type)
+        : grid_(grid),
+          props_(props),
+          tol_(tol),
+          maxit_(maxit),
+          solver_type_(solver_type),
+          darcyflux_(0),
+          source_(0),
+          dt_(0.0),
+          saturation_(grid.number_of_cells, -1.0),
+          fractionalflow_(grid.number_of_cells, -1.0),
+          fractionalflowderivative_(grid.number_of_cells, -1.0),
+          reorder_iterations_(grid.number_of_cells, 0),
+          mob_(2*grid.number_of_cells, -1.0),
+          dmob_(2*grid.number_of_cells, -1.0)
+#ifdef EXPERIMENT_GAUSS_SEIDEL
+        , ia_upw_(grid.number_of_cells + 1, -1),
+          ja_upw_(grid.number_of_faces, -1),
+          ia_downw_(grid.number_of_cells + 1, -1),
+          ja_downw_(grid.number_of_faces, -1)
+#endif
+    {
+        if (props.numPhases() != 2) {
+            OPM_THROW(std::runtime_error, "Property object must have 2 phases");
+        }
+        visc_ = props.viscosity();
+        int num_cells = props.numCells();
+        smin_.resize(props.numPhases()*num_cells);
+        smax_.resize(props.numPhases()*num_cells);
+        std::vector<int> cells(num_cells);
+        for (int i = 0; i < num_cells; ++i) {
+            cells[i] = i;
+        }
+        props.satRange(props.numCells(), &cells[0], &smin_[0], &smax_[0]);
+        if (gravity) {
+            initGravity(gravity);
+            initColumns();
+        }
+    }
 
     TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
                                                                    const Opm::IncompPropertiesInterface& props,
@@ -85,6 +129,7 @@ namespace Opm
             initGravity(gravity);
             initColumns();
         }
+        solver_type_ = 'r';
     }
 
 
@@ -204,11 +249,8 @@ namespace Opm
         double ds(double s) const
         {
 			//return 1 + dtpv*(dinflux + outflux*tm.fracFlowDerivative(s,cell));
-			
 			return 1 + dtpv*(outflux*tm.fracFlowDerivative(s,cell));
-			
 		}
-        
     };
 
 
@@ -222,12 +264,31 @@ namespace Opm
         int iters_used = 0;
         // saturation_[cell] = modifiedRegulaFalsi(res, smin_[2*cell], smax_[2*cell], maxit_, tol_, iters_used);
         
-        saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used); // Commented 27.01.14 - Svein
+        //saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used); // Original. Commented 04.02.14 - Svein
         
-        /*double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o. Used for the trust region routine, Svein 27.01.14
-        bool verbose = false;
-        saturation_[cell] = RootFinder::solveDarcyFlowByTrustRegion(res, saturation_[cell], M, maxit_, tol_, verbose, iters_used); // 27.01.14 Svein
-        */
+        if(solver_type_ == 'n')
+			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
+        else if(solver_type_ == 't')
+        {
+			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
+			bool verbose = false;
+			saturation_[cell] = TrustRegion<ThrowOnError>::solve(res, saturation_[cell], M, maxit_, tol_, verbose, iters_used);
+		}
+		else if(solver_type_ == 'i')
+		{
+			saturation_[cell] = Ridder<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
+		}
+		else if(solver_type_ == 'b')
+		{
+			saturation_[cell] = Brent<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
+		}
+        else
+			saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
+			
+		/*if(iters_used == 0)
+			std::cout << "No iterations used?! f(s):" << res(saturation_[cell]) << std::endl;
+        else
+			std::cout << "Iterations: " << iters_used << std::endl;*/
         
         // add if it is iteration on an out loop
         reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
@@ -442,7 +503,7 @@ namespace Opm
                     if (gf[nb] < 0.0) {
                         m[0] = mobcell[0];
                         m[1] = tm.mob_[2*nbcell[nb] + 1];
-                        dm[0] = dmobcell[0];
+                        dm[0] = -dmobcell[0]; // Minus sign handles the dkrds 'bug' in SaturationPropsBasic::relperm
                         dm[1] = tm.dmob_[2*nbcell[nb] + 1];
                     } else {
                         m[0] = tm.mob_[2*nbcell[nb]];
@@ -453,7 +514,7 @@ namespace Opm
                     double msum = m[0] + m[1];
                     if (msum > 0.0) {
                         //res += -dtpv*gf[nb]*m[0]*m[1]/msum;
-                        res += -dtpv*gf[nb]*( (dm[0]*m[0]+m[0]*dm[1])*msum + (dm[0]+dm[1])*m[0]*m[1] )/( msum*msum );
+                        res += -dtpv*gf[nb]*( (dm[0]*m[0]+m[0]*dm[1])*msum - (dm[0]+dm[1])*m[0]*m[1] )/( msum*msum );
                     }
                 }
             }
