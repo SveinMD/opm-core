@@ -485,6 +485,7 @@ namespace Opm
                       << "Error tolerance: " << tolerance << "\n"
                       << "# iter.\tx\t\txCorr\t\tf(x)\t\tf_x(x) \n";
             
+            double dfw2ds = 0.0;
             while (std::abs(f(x)) > tolerance)
             {
 				++iterations_used;
@@ -495,7 +496,8 @@ namespace Opm
 				xNew = x - f(x)/f.ds(x);
 				
 				xCorr = std::max(std::min(xNew,1.0),0.0);
-				if(dfw2(xCorr,visc_ratio)*dfw2(x,visc_ratio) < 0.0)
+				dfw2ds = dfw2(xCorr,visc_ratio);
+				if(dfw2ds*dfw2ds < 0.0)
 					xCorr = (xCorr+x)/2.0;
 				
 				if (verbose)
