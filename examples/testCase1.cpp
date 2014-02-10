@@ -264,16 +264,18 @@ try
 
         transport_solver.solve(&porevol[0], &src[0], dt, state);
         
-        if (printIterations)
+        if(printIterations)
+		{
 			printIterationsFromVector(transport_solver, i, solver_type, num_cells);
 			
-        vtkfilename.str("");
-        vtkfilename << "testCase1-" << solver_type << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
-        std::ofstream vtkfile(vtkfilename.str().c_str());
-        Opm::DataMap dm;
-        dm["saturation"] = &state.saturation();
-        dm["pressure"] = &state.pressure();
-        Opm::writeVtkData(grid, dm, vtkfile);
+	        vtkfilename.str("");
+	        vtkfilename << "testCase1-" << solver_type << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
+	        std::ofstream vtkfile(vtkfilename.str().c_str());
+	        Opm::DataMap dm;
+	        dm["saturation"] = &state.saturation();
+	        dm["pressure"] = &state.pressure();
+	        Opm::writeVtkData(grid, dm, vtkfile);
+		}
     }
     clock.stop();
     std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";
