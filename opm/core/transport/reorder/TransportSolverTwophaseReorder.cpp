@@ -229,17 +229,20 @@ namespace Opm
                 }
             }
             
-            double xval;
-            double xmin = 0; double xmax = 1;
-            int n_points = 150;
-            std::ofstream file;
-            file.open("fractional_flow.txt");
-            for ( int i = 0; i <= n_points; i++)
+            /*if(cell == 399)
             {
-				xval = (xmax-xmin)/n_points*i;
-				file << xval << "\t" << tm.fracFlow(xval,cell) << "\t" << tm.fracFlowDerivative(xval,cell) << "\n";
-			}
-			file.close();
+	            double xval;
+	            double xmin = 0; double xmax = 1;
+	            int n_points = 150;
+	            std::ofstream file;
+	            file.open("fractional_flow.txt");
+	            for ( int i = 0; i <= n_points; i++)
+	            {
+					xval = (xmax-xmin)/n_points*i;
+					file << xval << "\t" << tm.fracFlow(xval,cell) << "\t" << tm.fracFlowDerivative(xval,cell) << "\n";
+				}
+				file.close();
+			}*/
 
         }
         double operator()(double s) const

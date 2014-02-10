@@ -41,3 +41,7 @@ install_manifest.txt
 CTestTestfile.cmake
 DartConfiguration.tcl
 Testing/
+
+# numerical output
+*.vtu
+*.txt
