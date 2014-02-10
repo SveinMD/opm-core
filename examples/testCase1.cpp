@@ -111,30 +111,39 @@ try
 		// -r: Regula Falsi
 		for(int i = 1; i < argc; i++)
 		{
-			if(std::string(argv[i]) == "-n")
+			if(std::string(argv[i]) == "-s")
 			{
-				std::cout << "Newton solver chosen for single cell problem\n";
-				solver_type = 'n';
-			}
-			else if(std::string(argv[i]) == "-t")
-			{
-				std::cout << "Trust region solver chosen for single cell problem\n";
-				solver_type = 't';
-			}
-			else if(std::string(argv[i]) == "-i")
-			{
-				std::cout << "Ridder's solver chosen for single cell problem\n";
-				solver_type = 'i';
-			}
-			else if(std::string(argv[i]) == "-b")
-			{
-				std::cout << "Brent's solver chosen for single cell problem\n";
-				solver_type = 'b';
-			}
-			else if(std::string(argv[i]) == "-r")
-			{
-				std::cout << "Regula Falsi solver chosen for single cell problem\n";
-				solver_type = 'r';
+				i++;
+				if(std::string(argv[i]) == "n")
+				{
+					std::cout << "Newton solver chosen for single cell problem\n";
+					solver_type = 'n';
+				}
+				else if(std::string(argv[i]) == "t")
+				{
+					std::cout << "Trust region solver chosen for single cell problem\n";
+					solver_type = 't';
+				}
+				else if(std::string(argv[i]) == "i")
+				{
+					std::cout << "Ridder's solver chosen for single cell problem\n";
+					solver_type = 'i';
+				}
+				else if(std::string(argv[i]) == "b")
+				{
+					std::cout << "Brent's solver chosen for single cell problem\n";
+					solver_type = 'b';
+				}
+				else if(std::string(argv[i]) == "r")
+				{
+					std::cout << "Regula Falsi solver chosen for single cell problem\n";
+					solver_type = 'r';
+				}
+				else
+				{
+					solver_type = 'r';
+				}
+			
 			}
 			else if(std::string(argv[i]) == "-p")
 			{

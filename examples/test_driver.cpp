@@ -176,7 +176,6 @@ int main(int argc, char ** argv)
 		root = RegulaFalsi<TheErrorPolicy>::solve(f, init_guess, 0.0, 1.0, max_iter, tolerance, iters_used);
 	}
 	
-	
 	std::cout << "A root x = " << root << " giving f(x) = " << f(root) << " was found after " << iters_used << " iterations.\n";
 	
 	return 0;
