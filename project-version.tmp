@@ -1,1 +1,1 @@
-#define PROJECT_VERSION "2013.10 (1d5ff35*)"
+#define PROJECT_VERSION "2013.10 (b824f1d*)"
