@@ -229,7 +229,7 @@ namespace Opm
                 }
             }
             
-            if(cell == 399)
+            /*if(cell == 399)
             {
 	            double xval;
 	            double xmin = 0; double xmax = 1;
@@ -242,7 +242,7 @@ namespace Opm
 					file << xval << "\t" << tm.fracFlow(xval,cell) << "\t" << tm.fracFlowDerivative(xval,cell) << "\n";
 				}
 				file.close();
-			}
+			}*/
 
         }
         double operator()(double s) const
