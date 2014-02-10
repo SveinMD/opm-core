@@ -87,12 +87,12 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 {
 	std::vector<int> iterations = transport_solver.getReorderIterations();
 	std::ostringstream iterfilename;
-    
+	
 	// Set filename and open
 	iterfilename.str(""); 
 	iterfilename << "testCase1_iterations-" << solver_type << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
 	std::ofstream file; file.open(iterfilename.str().c_str());
-	for ( int i = 0; i <= num_cells; i++)
+	for ( int i = 0; i < num_cells; i++)
 	{
 		file << i << "\t" << iterations[i] << "\n";
 	}
