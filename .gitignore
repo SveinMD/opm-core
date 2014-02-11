@@ -45,3 +45,5 @@ Testing/
 # numerical output
 *.vtu
 *.txt
+!CMakeLists.txt
+!CMakeCache.txt
