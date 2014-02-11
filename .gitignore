@@ -46,4 +46,3 @@ Testing/
 *.vtu
 *.txt
 !CMakeLists.txt
-!CMakeCache.txt
