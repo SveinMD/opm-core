@@ -38,17 +38,21 @@ namespace Opm
     class ReorderSolverInterface
     {
     public:
-    virtual ~ReorderSolverInterface() {}
+    virtual ~ReorderSolverInterface() {};
+    
     private:
 	virtual void solveSingleCell(const int cell) = 0;
 	virtual void solveMultiCell(const int num_cells, const int* cells) = 0;
+	
     protected:
 	void reorderAndTransport(const UnstructuredGrid& grid, const double* darcyflux);
         const std::vector<int>& sequence() const;
         const std::vector<int>& components() const;
+        void setVerbose(bool);
     private:
         std::vector<int> sequence_;
         std::vector<int> components_;
+        bool verbose_;
     };
 
 

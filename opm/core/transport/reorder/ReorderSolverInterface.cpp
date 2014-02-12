@@ -38,7 +38,8 @@ void Opm::ReorderSolverInterface::reorderAndTransport(const UnstructuredGrid& gr
     clock.start();
     compute_sequence(&grid, darcyflux, &sequence_[0], &components_[0], &ncomponents);
     clock.stop();
-    std::cout << "Topological sort took: " << clock.secsSinceStart() << " seconds." << std::endl;
+    if(verbose_)
+		std::cout << "Topological sort took: " << clock.secsSinceStart() << " seconds." << std::endl;
 
     // Make vector's size match actual used data.
     components_.resize(ncomponents + 1);
@@ -74,4 +75,9 @@ const std::vector<int>& Opm::ReorderSolverInterface::sequence() const
 const std::vector<int>& Opm::ReorderSolverInterface::components() const
 {
     return components_;
+}
+
+void Opm::ReorderSolverInterface::setVerbose(bool verbose)
+{
+	verbose_ = verbose;
 }
