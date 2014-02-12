@@ -302,7 +302,7 @@ try
 			printIterationsFromVector(transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
 			
 	        vtkfilename.str("");
-	        vtkfilename << "testCase1-s-" << solver_type << "-T-" << replaceStrChar(std::to_string(comp_length),".",'-') << "-t-" << replaceStrChar(std::to_string(dt),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
+	        vtkfilename << "testCase1-s-" << solver_type << "-T-" << replaceStrChar(std::to_string(comp_length),".",'_') << "-t-" << replaceStrChar(std::to_string(dt),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
 	        std::ofstream vtkfile(vtkfilename.str().c_str());
 	        Opm::DataMap dm;
 	        dm["saturation"] = &state.saturation();
