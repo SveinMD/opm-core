@@ -42,6 +42,8 @@
 
 #include <opm/core/utility/StopWatch.hpp>
 
+using std::string;
+
 /// The Darcy law gives
 ///   \f[u_\alpha= -\frac1{\mu_\alpha} K_\alpha\nabla p_\alpha\f]
 /// where \f$\mu_\alpha\f$ and \f$K_\alpha\f$ represent the viscosity
@@ -83,14 +85,29 @@
 /// the transport equation assuming that \f$u\f$ is constant in time in the time step
 /// interval we are considering.
 
-void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & transport_solver, int i, const char solver_type, int num_cells)
+string replaceStrChar(string str, const string & replace, char ch)
+{
+	size_t found = str.find_first_of(replace);
+	while( found != string::npos )
+	{
+		str[found] = ch;
+		found = str.find_first_of(replace, found+1);
+	}
+	
+	return str;
+}
+
+void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & transport_solver, int i, int num_cells, const char solver_type, const double comp_length, const double time_step)
 {
 	std::vector<int> iterations = transport_solver.getReorderIterations();
 	std::ostringstream iterfilename;
 	
+	string str_comp_length = replaceStrChar(std::to_string(comp_length), ".", '_');
+	string str_time_step = replaceStrChar(std::to_string(time_step), ".", '_');
+	
 	// Set filename and open
 	iterfilename.str(""); 
-	iterfilename << "testCase1_iterations-" << solver_type << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
+	iterfilename << "testCase1-iterations-s-" << solver_type << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
 	std::ofstream file; file.open(iterfilename.str().c_str());
 	for ( int i = 0; i < num_cells; i++)
 	{
@@ -102,6 +119,8 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 int main (int argc, char ** argv)
 try
 {
+	double time_step_days = 0.1;
+	double comp_length_days = 2;
 	char solver_type = 'r';
 	bool printIterations = false;
 	// Check parameters
@@ -149,8 +168,18 @@ try
 			{
 				printIterations = true;
 			}
+			else if(std::string(argv[i]) == "-t")
+			{
+				i++;
+				time_step_days = std::atof(argv[i]);
+			}
+			else if(std::string(argv[i]) == "-T")
+			{
+				i++;
+				comp_length_days = std::atof(argv[i]);
+			}
 			else
-				std::cerr << "Invalid argument passed to " << argv[0] << "\n";
+				std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 		}
 	}
 		
@@ -219,8 +248,7 @@ try
     /// and stored internally by the IncompTpfa class. The null pointer
     /// constructor argument is for wells, which are not used in this tutorial.
     LinearSolverUmfpack linsolver;
-    IncompTpfa psolver(grid, props,
- linsolver, grav, NULL, src, bcs.c_bcs());
+    IncompTpfa psolver(grid, props, linsolver, grav, NULL, src, bcs.c_bcs());
 
     /// We set up a state object for the wells. Here, there are
     /// no wells and we let it remain empty.
@@ -233,12 +261,17 @@ try
     /// Set up the transport solver. This is a reordering implicit Euler transport solver.
     const double tolerance = 1e-9;
     const int max_iterations = 30;
-    Opm::TransportSolverTwophaseReorder transport_solver(grid, props, NULL, tolerance, max_iterations, solver_type);
-
+    Opm::TransportSolverTwophaseReorder transport_solver(grid, props, NULL, tolerance, max_iterations, solver_type, false);
+	
     /// Time integration parameters
-    const double dt = 0.1*day;
-    const int num_time_steps = 20;
-
+    //const double dt = 0.1*day;
+    //const int num_time_steps = 20;
+    const double comp_length = comp_length_days*day;
+    const double dt = time_step_days*day;
+    const int num_time_steps = comp_length/dt;
+    
+    std::cout << "Time step length: " << dt << std::endl;
+    
     /// We define a vector which contains all cell indexes. We use this
     /// vector to set up parameters on the whole domain.
     std::vector<int> allcells(num_cells);
@@ -266,7 +299,7 @@ try
         
         if(printIterations)
 		{
-			printIterationsFromVector(transport_solver, i, solver_type, num_cells);
+			printIterationsFromVector(transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
 			
 	        vtkfilename.str("");
 	        vtkfilename << "testCase1-" << solver_type << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";

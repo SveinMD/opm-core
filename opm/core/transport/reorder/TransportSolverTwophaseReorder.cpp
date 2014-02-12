@@ -48,6 +48,53 @@ namespace Opm
                                                                    const double* gravity,
                                                                    const double tol,
                                                                    const int maxit,
+                                                                   char solver_type,
+                                                                   bool verbose)
+        : grid_(grid),
+          props_(props),
+          tol_(tol),
+          maxit_(maxit),
+          solver_type_(solver_type),
+          darcyflux_(0),
+          source_(0),
+          dt_(0.0),
+          saturation_(grid.number_of_cells, -1.0),
+          fractionalflow_(grid.number_of_cells, -1.0),
+          fractionalflowderivative_(grid.number_of_cells, -1.0),
+          reorder_iterations_(grid.number_of_cells, 0),
+          mob_(2*grid.number_of_cells, -1.0),
+          dmob_(2*grid.number_of_cells, -1.0)
+#ifdef EXPERIMENT_GAUSS_SEIDEL
+        , ia_upw_(grid.number_of_cells + 1, -1),
+          ja_upw_(grid.number_of_faces, -1),
+          ia_downw_(grid.number_of_cells + 1, -1),
+          ja_downw_(grid.number_of_faces, -1)
+#endif
+    {
+        if (props.numPhases() != 2) {
+            OPM_THROW(std::runtime_error, "Property object must have 2 phases");
+        }
+        visc_ = props.viscosity();
+        int num_cells = props.numCells();
+        smin_.resize(props.numPhases()*num_cells);
+        smax_.resize(props.numPhases()*num_cells);
+        std::vector<int> cells(num_cells);
+        for (int i = 0; i < num_cells; ++i) {
+            cells[i] = i;
+        }
+        props.satRange(props.numCells(), &cells[0], &smin_[0], &smax_[0]);
+        if (gravity) {
+            initGravity(gravity);
+            initColumns();
+        }
+        setVerbose(verbose);
+    }
+
+	TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
+                                                                   const Opm::IncompPropertiesInterface& props,
+                                                                   const double* gravity,
+                                                                   const double tol,
+                                                                   const int maxit,
                                                                    char solver_type)
         : grid_(grid),
           props_(props),

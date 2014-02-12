@@ -62,7 +62,23 @@ namespace Opm
                                        const double tol,
                                        const int maxit,
                                        char solver_type);
-
+		
+		/// Construct solver.
+        /// \param[in] grid      A 2d or 3d grid.
+        /// \param[in] props     Rock and fluid properties.
+        /// \param[in] gravity   Gravity vector (null for no gravity).
+        /// \param[in] tol       Tolerance used in the solver.
+        /// \param[in] maxit     Maximum number of non-linear iterations used.
+        /// \param[in] solver_type Char indicating the solver to be used for the single cell problem 
+		///						 solver_type = 'n' -> Newton, 'r' -> Modified regula falsi (default)
+        TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
+                                       const Opm::IncompPropertiesInterface& props,
+                                       const double* gravity,
+                                       const double tol,
+                                       const int maxit,
+                                       char solver_type,
+                                       bool verbose);
+		
         // Virtual destructor.
         virtual ~TransportSolverTwophaseReorder();
 
