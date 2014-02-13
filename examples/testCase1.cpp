@@ -42,6 +42,9 @@
 
 #include <opm/core/utility/StopWatch.hpp>
 
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/lexical_cast.hpp>
+
 using std::string;
 
 /// The Darcy law gives
@@ -121,6 +124,8 @@ try
 {
 	double time_step_days = 0.1;
 	double comp_length_days = 2;
+	int xdim = 20;
+	int ydim = 20;
 	char solver_type = 'r';
 	bool printIterations = false;
 	// Check parameters
@@ -178,6 +183,17 @@ try
 				i++;
 				comp_length_days = std::atof(argv[i]);
 			}
+			else if(std::string(argv[i]) == "-d")
+			{
+				i++;
+				xdim = std::atof(argv[i]);
+				ydim = xdim;
+				if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
+				{ 
+					i++;
+				    ydim = std::atoi(argv[i]);
+				}
+			}
 			else
 				std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 		}
@@ -191,8 +207,8 @@ try
     /// The Opm::GridManager is responsible for creating and destroying the grid,
     /// the UnstructuredGrid data structure contains the actual grid topology
     /// and geometry.
-    int nx = 20;
-    int ny = 20;
+    int nx = xdim; // = 20;
+    int ny = ydim; // = 20;
     int nz = 1;
     double dx = 10.0;
     double dy = 10.0;
