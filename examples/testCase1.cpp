@@ -246,7 +246,10 @@ try
     using namespace Opm::unit;
     using namespace Opm::prefix;
     std::vector<double> density(num_phases, 1000.0);
-    std::vector<double> viscosity(num_phases, 1.0*centi*Poise);
+    static const double visc_arr[] = {1.0*centi*Poise, 10.0*centi*Poise}; // 1/10 case, water/oil
+    //static const int [] visc_arr = {1.0*centi*Poise, 10.0*centi*Poise}; // 10/1 case, water/oil
+    std::vector<double> viscosity(visc_arr, visc_arr + sizeof(visc_arr)/sizeof(double));
+    //std::vector<double> viscosity(num_phases, 1.0*centi*Poise);
     double porosity = 0.5;
     double permeability = 10.0*milli*darcy;
 
