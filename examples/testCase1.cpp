@@ -122,6 +122,8 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 int main (int argc, char ** argv)
 try
 {
+	bool verbose = false;
+	bool solver_flag = false;
 	double time_step_days = 0.1;
 	double comp_length_days = 2;
 	int xdim = 20;
@@ -145,8 +147,18 @@ try
 				}
 				else if(std::string(argv[i]) == "t")
 				{
-					std::cout << "Trust region solver chosen for single cell problem\n";
+					std::cout << "Newton Raphson Trust region solver chosen for single cell problem\n";
 					solver_type = 't';
+					if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
+					{ 
+						i++;
+						solver_flag = true;
+					}
+				}
+				else if(std::string(argv[i]) == "u")
+				{
+					std::cout << "Regula Falsi Trust region solver chosen for single cell problem\n";
+					solver_type = 'u';
 				}
 				else if(std::string(argv[i]) == "i")
 				{
@@ -193,6 +205,10 @@ try
 					i++;
 				    ydim = std::atoi(argv[i]);
 				}
+			}
+			else if(std::string(argv[i]) == "-v")
+			{
+				verbose = true;
 			}
 			else
 				std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
@@ -277,7 +293,7 @@ try
     /// Set up the transport solver. This is a reordering implicit Euler transport solver.
     const double tolerance = 1e-9;
     const int max_iterations = 30;
-    Opm::TransportSolverTwophaseReorder transport_solver(grid, props, NULL, tolerance, max_iterations, solver_type, false);
+    Opm::TransportSolverTwophaseReorder transport_solver(grid, props, NULL, tolerance, max_iterations, solver_type, verbose, solver_flag);
 	
     /// Time integration parameters
     //const double dt = 0.1*day;

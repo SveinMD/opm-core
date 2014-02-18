@@ -49,12 +49,14 @@ namespace Opm
                                                                    const double tol,
                                                                    const int maxit,
                                                                    char solver_type,
-                                                                   bool verbose)
+                                                                   bool verbose,
+                                                                   bool solver_flag)
         : grid_(grid),
           props_(props),
           tol_(tol),
           maxit_(maxit),
           solver_type_(solver_type),
+          solver_flag_(solver_flag),
           darcyflux_(0),
           source_(0),
           dt_(0.0),
@@ -95,12 +97,14 @@ namespace Opm
                                                                    const double* gravity,
                                                                    const double tol,
                                                                    const int maxit,
-                                                                   char solver_type)
+                                                                   char solver_type,
+                                                                   bool solver_flag)
         : grid_(grid),
           props_(props),
           tol_(tol),
           maxit_(maxit),
           solver_type_(solver_type),
+          solver_flag_(solver_flag),
           darcyflux_(0),
           source_(0),
           dt_(0.0),
@@ -177,6 +181,7 @@ namespace Opm
             initColumns();
         }
         solver_type_ = 'r';
+        solver_flag_ = false;
     }
 
 
@@ -322,7 +327,24 @@ namespace Opm
         {
 			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
 			bool verbose = false;
-			saturation_[cell] = TrustRegion<ThrowOnError>::solve(res, saturation_[cell], M, maxit_, tol_, verbose, iters_used);
+			if(!solver_flag_)
+			{
+				if(verbose)
+					std::cout << "Using precise Newton Raphson Trust Region method \n";
+				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solve(res, saturation_[cell], M, maxit_, tol_, verbose, iters_used);
+			}
+			else
+			{
+				if(verbose)
+					std::cout << "Using precise Newton Raphson Trust Region method \n";
+				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, saturation_[cell], M, maxit_, tol_, verbose, iters_used);
+			}
+		}
+		else if(solver_type_ == 'u')
+        {
+			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
+			bool verbose = false;
+			saturation_[cell] = RegulaFalsiTrustRegion<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, M, maxit_, tol_, verbose, iters_used);
 		}
 		else if(solver_type_ == 'i')
 		{

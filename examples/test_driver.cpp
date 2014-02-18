@@ -152,8 +152,13 @@ int main(int argc, char ** argv)
 	}
 	else if(solver_type == 't')
 	{
-		std::cout << "Trust Region: \n";
-		root = TrustRegion<TheErrorPolicy>::solve(f, init_guess, max_iter, tolerance, verbose, iters_used);
+		std::cout << "Newton Raphson Trust Region: \n";
+		root = NewtonRaphsonTrustRegion<TheErrorPolicy>::solve(f, init_guess, max_iter, tolerance, verbose, iters_used);
+	}
+	else if(solver_type == 'u')
+	{
+		std::cerr << "Regula Falsi Trust Region not supported atm. \n";
+		root = -1e100; //root = RegulaFalsiTrustRegion<TheErrorPolicy>::solve(f, init_guess, max_iter, tolerance, verbose, iters_used);
 	}
 	else if(solver_type == 'r')
 	{

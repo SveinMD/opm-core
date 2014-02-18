@@ -61,7 +61,8 @@ namespace Opm
                                        const double* gravity,
                                        const double tol,
                                        const int maxit,
-                                       char solver_type);
+                                       char solver_type,
+                                       bool dummy);
 		
 		/// Construct solver.
         /// \param[in] grid      A 2d or 3d grid.
@@ -77,7 +78,8 @@ namespace Opm
                                        const double tol,
                                        const int maxit,
                                        char solver_type,
-                                       bool verbose);
+                                       bool verbose,
+                                       bool dummy);
 		
         // Virtual destructor.
         virtual ~TransportSolverTwophaseReorder();
@@ -130,6 +132,7 @@ namespace Opm
         double tol_;
         int maxit_;
         char solver_type_;
+        bool solver_flag_;
 
         const double* darcyflux_;   // one flux per grid face
         const double* porevolume_;  // one volume per cell

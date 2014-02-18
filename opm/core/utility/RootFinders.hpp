@@ -394,9 +394,180 @@ namespace Opm
 		}
 	};
 	
-	// Trust region solver
+	template <class ErrorPolicy = ThrowOnError>
+    class RegulaFalsiTrustRegion
+    {
+    public:
+
+        /// Implements a modified regula falsi method as described in
+        /// "Improved algorithms of Illinois-type for the numerical
+        /// solution of nonlinear equations"
+        /// by J. A. Ford.
+        /// Current variant is the 'Pegasus' method.
+        template <class Functor>
+        inline static double solve(const Functor& f,
+                                   const double a,
+                                   const double b,
+                                   const double visc_ratio,
+                                   const int max_iter,
+                                   const double tolerance,
+                                   const bool verbose,
+                                   int& iterations_used)
+        {
+            using namespace std;
+            const double macheps = numeric_limits<double>::epsilon();
+            const double eps = tolerance + macheps*max(max(fabs(a), fabs(b)), 1.0);
+
+            double x0 = a;
+            double x1 = b;
+            double f0 = f(x0);
+            const double epsF = tolerance + macheps*max(fabs(f0), 1.0);
+            if (fabs(f0) < epsF) {
+                return x0;
+            }
+            double f1 = f(x1);
+            if (fabs(f1) < epsF) {
+                return x1;
+            }
+            if (f0*f1 > 0.0) {
+                return ErrorPolicy::handleBracketingFailure(a, b, f0, f1);
+            }
+            
+            return loop(f,x0,x1,f0,f1,visc_ratio,max_iter,eps,epsF,iterations_used);
+        }
+        
+        /// Implements a modified regula falsi method as described in
+        /// "Improved algorithms of Illinois-type for the numerical
+        /// solution of nonlinear equations"
+        /// by J. A. Ford.
+        /// Current variant is the 'Pegasus' method.
+        /// This version takes an extra parameter for the initial guess.
+        template <class Functor>
+        inline static double solve(const Functor& f,
+                                   const double initial_guess,
+                                   const double a,
+                                   const double b,
+                                   const double visc_ratio,
+                                   const int max_iter,
+                                   const double tolerance,
+                                   const bool verbose,
+                                   int& iterations_used)
+        {
+            using namespace std;
+            const double macheps = numeric_limits<double>::epsilon();
+            const double eps = tolerance + macheps*max(max(fabs(a), fabs(b)), 1.0);
+
+            double f_initial = f(initial_guess);
+            const double epsF = tolerance + macheps*max(fabs(f_initial), 1.0);
+            if (fabs(f_initial) < epsF) {
+                return initial_guess;
+            }
+            double x0 = a;
+            double x1 = b;
+            double f0 = f_initial;
+            double f1 = f_initial;
+            if (x0 != initial_guess) {
+                f0 = f(x0);
+                if (fabs(f0) < epsF) {
+                    return x0;
+                }
+            }
+            if (x1 != initial_guess) {
+                f1 = f(x1);
+                if (fabs(f1) < epsF) {
+                    return x1;
+                }
+            }
+            if (f0*f_initial < 0.0) {
+                x1 = initial_guess;
+                f1 = f_initial;
+            } else {
+                x0 = initial_guess;
+                f0 = f_initial;
+            }
+            if (f0*f1 > 0.0) {
+                return ErrorPolicy::handleBracketingFailure(a, b, f0, f1);
+            }
+            
+            return loop(f,x0,x1,f0,f1,visc_ratio,max_iter,eps,epsF,iterations_used);
+        }
+
+		template <class Functor>
+        inline static double loop(const Functor& f,
+                                   double x0,
+                                   double x1,
+                                   double f0,
+                                   double f1,
+                                   const double visc_ratio,
+                                   const int max_iter,
+                                   const double eps,
+                                   const double epsF,
+                                   int& iterations_used)
+        {
+			iterations_used = 0;
+            // In every iteraton, x1 is the last point computed,
+            // and x0 is the last point computed that makes it a bracket.
+            while (fabs(x1 - x0) >= 1e-9*eps) {
+				double xold = x1;
+                double xnew = regulaFalsiStep(x0, x1, f0, f1);
+                
+                // Trust region
+                xnew = std::max(std::min(xnew,1.0),0.0);
+				if(dfw2(xnew,visc_ratio)*dfw2(xold,visc_ratio) < 0.0)
+					xnew = (xnew+xold)/2.0;
+                
+                double fnew = f(xnew);
+                ++iterations_used;
+                if (iterations_used > max_iter) {
+                    return ErrorPolicy::handleTooManyIterations(x0, x1, max_iter);
+                }
+                if (fabs(fnew) < epsF) {
+                    return xnew;
+                }
+                // Now we must check which point we must replace.
+                if ((fnew > 0.0) == (f0 > 0.0)) {
+                    // We must replace x0.
+                    x0 = x1;
+                    f0 = f1;
+                } else {
+                    // We must replace x1, this is the case where
+                    // the modification to regula falsi kicks in,
+                    // by modifying f0.
+                    // The 'Pegasus' method
+                    const double gamma = f1/(f1 + fnew);
+                    f0 *= gamma;
+                }
+                x1 = xnew;
+                f1 = fnew;
+            }
+            return 0.5*(x0 + x1);
+            
+					
+					
+					
+		}
+
+    private:
+        inline static double regulaFalsiStep(const double a,
+                                             const double b,
+                                             const double fa,
+                                             const double fb)
+        {
+            assert(fa*fb < 0.0);
+            return (b*fa - a*fb)/(fa - fb);
+        }
+		inline static double dfw2(double x, double M)
+		{
+			double x2 = pow(x,2.0);
+			double xm2 = pow(x-1,2.0);
+			return 2*M*( M*(2*x+1)*xm2 + x2*(2*x-3) )/pow(M*xm2 + x2, 3.0);
+		}
+
+    };
+	
+	// Newton Raphson Trust region solver
     template <class ErrorPolicy = ThrowOnError>
-    class TrustRegion
+    class NewtonRaphsonTrustRegion
     {
 		public:
 		
@@ -444,6 +615,62 @@ namespace Opm
 		
 		// Darcy flow trust region solver
 		// Uses supplied viscosity ratio for trust region scheme
+		// Reduced number of function calls by approximating dfw2(xNew)
+		template <class Functor>
+		inline static double solveApprox(const Functor& f,
+								   const double initial_guess,
+								   const double visc_ratio,
+								   const int max_iter,
+								   const double tolerance,
+								   const bool verbose,
+								   int& iterations_used)
+        {
+            double x = initial_guess;
+            double xNew = initial_guess;
+            
+            if(verbose)
+            std::cout << "----------------------- Newton Trust Region iteration ---------------------------\n"
+					  << "Initial guess: " << initial_guess << "\n"
+                      << "Max iterations: " << max_iter << "\n"
+                      << "Error tolerance: " << tolerance << "\n"
+                      << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
+            
+            double dfw2x = dfw2(x,visc_ratio);
+            double dfw2xNew = 0;
+            while (std::abs(f(x)) > tolerance)
+            {
+				++iterations_used;
+				if (iterations_used > max_iter)
+                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
+                
+				// Scalar Newton's method
+				xNew = x - f(x)/f.ds(x);
+				
+				// Restrict to interval [0,1]
+				xNew = std::max(std::min(xNew,1.0),0.0);
+				
+				dfw2xNew = dfw2(xNew,visc_ratio);
+				if(dfw2xNew*dfw2x < 0.0)
+				{
+					xNew = (xNew+x)*0.5;
+					dfw2x = (dfw2xNew+dfw2x)*0.5;
+				}
+				else
+					dfw2x = dfw2xNew;
+				
+				if (verbose)
+					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
+				
+				x = xNew;
+			}
+			if(verbose)
+				std::cout << "---------------------- End Newton iteration ------------------------\n";
+			
+            return x;
+		}
+		
+		// Darcy flow trust region solver
+		// Uses supplied viscosity ratio for trust region scheme
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -455,7 +682,6 @@ namespace Opm
         {
             double x = initial_guess;
             double xNew = initial_guess;
-            double xCorr = initial_guess;
             
             /*double thePoint = 0.4;
             std::string line;
@@ -483,7 +709,7 @@ namespace Opm
 					  << "Initial guess: " << initial_guess << "\n"
                       << "Max iterations: " << max_iter << "\n"
                       << "Error tolerance: " << tolerance << "\n"
-                      << "# iter.\tx\t\txCorr\t\tf(x)\t\tf_x(x) \n";
+                      << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
             while (std::abs(f(x)) > tolerance)
             {
@@ -494,14 +720,17 @@ namespace Opm
 				// Scalar Newton's method
 				xNew = x - f(x)/f.ds(x);
 				
-				xCorr = std::max(std::min(xNew,1.0),0.0);
-				if(dfw2(xCorr,visc_ratio)*dfw2(x,visc_ratio) < 0.0)
-					xCorr = (xCorr+x)/2.0;
+				// Restrict to interval [0,1]
+				xNew = std::max(std::min(xNew,1.0),0.0);
+				
+				// Trust Region
+				if(dfw2(xNew,visc_ratio)*dfw2(x,visc_ratio) < 0.0)
+					xNew = (xNew+x)/2.0;
 				
 				if (verbose)
-					printf("%d\t%8.2e\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,xCorr,f(x),f.ds(x));
+					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
 				
-				x = xCorr;
+				x = xNew;
 			}
 			if(verbose)
 				std::cout << "---------------------- End Newton iteration ------------------------\n";
