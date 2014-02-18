@@ -81,3 +81,8 @@ void Opm::ReorderSolverInterface::setVerbose(bool verbose)
 {
 	verbose_ = verbose;
 }
+
+bool Opm::ReorderSolverInterface::getVerbose()
+{
+	return verbose_;
+}

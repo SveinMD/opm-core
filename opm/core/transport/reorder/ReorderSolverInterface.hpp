@@ -49,6 +49,7 @@ namespace Opm
         const std::vector<int>& sequence() const;
         const std::vector<int>& components() const;
         void setVerbose(bool);
+        bool getVerbose();
     private:
         std::vector<int> sequence_;
         std::vector<int> components_;
