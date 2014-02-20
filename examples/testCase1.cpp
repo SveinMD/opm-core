@@ -324,6 +324,9 @@ try
     /// output filename at each timestep.
     std::ostringstream vtkfilename;
 	
+	if(verbose)
+			std::cout << "Solving " << num_time_steps << " time steps\n";
+	
 	time::StopWatch clock;
 	clock.start();
     for (int i = 0; i < num_time_steps; ++i) {
@@ -344,6 +347,8 @@ try
 	        dm["pressure"] = &state.pressure();
 	        Opm::writeVtkData(grid, dm, vtkfile);
 		}
+		if(verbose)
+			std::cout << "Solved step " << i+1 << " of " << num_time_steps << "\n";
     }
     clock.stop();
     std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";

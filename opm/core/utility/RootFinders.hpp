@@ -617,9 +617,10 @@ namespace Opm
 		// Uses supplied viscosity ratio for trust region scheme
 		// Reduced number of function calls by approximating dfw2(xNew)
 		template <class Functor>
-		inline static double solveApprox(const Functor& f,
+		inline static double solve(const Functor& f,
 								   const double initial_guess,
 								   const double visc_ratio,
+								   const double inflec,
 								   const int max_iter,
 								   const double tolerance,
 								   const bool verbose,
@@ -628,15 +629,45 @@ namespace Opm
             double x = initial_guess;
             double xNew = initial_guess;
             
+            //double d2fw_inflec = visc_ratio*(2*inflec+1)*(inflec-1)*(inflec-1)+inflec*inflec*(2*inflec-3);
+            //std::cout << "d2fw_inflec: " << d2fw_inflec << "\n";
+            
             if(verbose)
             std::cout << "----------------------- Newton Trust Region iteration ---------------------------\n"
 					  << "Initial guess: " << initial_guess << "\n"
                       << "Max iterations: " << max_iter << "\n"
                       << "Error tolerance: " << tolerance << "\n"
+                      << "Inflection point: " << inflec << "\n"
+                      //<< "Func. val. at inflec: " << d2fw_inflec << "\n"
                       << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
-            double dfw2x = dfw2(x,visc_ratio);
-            double dfw2xNew = 0;
+            /*if(verbose)
+            {
+				std::cout << "Viscosity ratio: " << visc_ratio << "\n";
+            double thePoint = 0.4;
+            std::string line;
+            std::ifstream infile("pointdata.txt");
+            if(infile.is_open())
+            {
+				if( getline(infile,line) )
+					thePoint = atof(line.c_str());
+				infile.close();
+			}
+			double xval;
+            double xmin = 0; double xmax = 1;
+            int n_points = 150;
+            std::ofstream file;
+            file.open("cell_residual.txt");
+            for ( int i = 0; i <= n_points; i++)
+            {
+				xval = (xmax-xmin)/n_points*i;
+				file << xval << "\t" << f(xval) << "\t" << f.ds(xval) << "\t" << fw(xval,visc_ratio) << "\t" << dfw2(xval,visc_ratio) << "\t" << f(thePoint) + f.ds(thePoint)*(xval-thePoint) << "\n";
+			}
+			file.close();
+			}*/
+            
+            //double dfw2x = dfw2(x,visc_ratio);
+            //double dfw2xNew = 0;
             while (std::abs(f(x)) > tolerance)
             {
 				++iterations_used;
@@ -649,17 +680,20 @@ namespace Opm
 				// Restrict to interval [0,1]
 				xNew = std::max(std::min(xNew,1.0),0.0);
 				
-				dfw2xNew = dfw2(xNew,visc_ratio);
+				/*dfw2xNew = dfw2(xNew,visc_ratio);
 				if(dfw2xNew*dfw2x < 0.0)
 				{
 					xNew = (xNew+x)*0.5;
 					dfw2x = (dfw2xNew+dfw2x)*0.5;
 				}
 				else
-					dfw2x = dfw2xNew;
+					dfw2x = dfw2xNew;*/
+					
+				if( (inflec-xNew)*(inflec-x) < 0 )
+					xNew = inflec;
 				
 				if (verbose)
-					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
+					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(xNew),f.ds(xNew));
 				
 				x = xNew;
 			}
@@ -672,7 +706,7 @@ namespace Opm
 		// Darcy flow trust region solver
 		// Uses supplied viscosity ratio for trust region scheme
 		template <class Functor>
-		inline static double solve(const Functor& f,
+		inline static double solveApprox(const Functor& f,
 								   const double initial_guess,
 								   const double visc_ratio,
 								   const int max_iter,

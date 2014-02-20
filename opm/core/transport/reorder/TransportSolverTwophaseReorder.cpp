@@ -32,6 +32,10 @@
 #include <iterator>
 #include <numeric>
 
+#include <opm/core/utility/ErrorMacros.hpp>
+#define _USE_MATH_DEFINES
+#include <math.h>
+//#include <complex>
 
 #define EXPERIMENT_GAUSS_SEIDEL
 
@@ -42,7 +46,7 @@ namespace Opm
     // Choose error policy for scalar solves here.
     typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
     //typedef NewtonRaphson<WarnAndContinueOnError> RootFinder;
-
+	
 	TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
                                                                    const Opm::IncompPropertiesInterface& props,
                                                                    const double* gravity,
@@ -90,6 +94,7 @@ namespace Opm
             initColumns();
         }
         setVerbose(verbose);
+        initInflectionPoint(visc_[0]/visc_[1]);
     }
 
 	TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
@@ -137,6 +142,7 @@ namespace Opm
             initGravity(gravity);
             initColumns();
         }
+        initInflectionPoint(visc_[0]/visc_[1]);
     }
 
     TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
@@ -321,6 +327,8 @@ namespace Opm
         
         //saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used); // Original. Commented 04.02.14 - Svein
         
+		double inflec = getInflectionPoint();
+        
         if(solver_type_ == 'n')
 			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
         else if(solver_type_ == 't')
@@ -329,13 +337,19 @@ namespace Opm
 			if(!solver_flag_)
 			{
 				if(getVerbose())
-					std::cout << "Using precise Newton Raphson Trust Region method \n";
-				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solve(res, saturation_[cell], M, maxit_, tol_, getVerbose(), iters_used);
+					std::cout << "Using precise Newton Raphson Trust Region method in cell " << cell << "\n";
+				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solve(res, saturation_[cell], M, inflec, maxit_, tol_, getVerbose(), iters_used);
 			}
 			else
 			{
 				if(getVerbose())
-					std::cout << "Using approximate Newton Raphson Trust Region method \n";
+					std::cout << "Using approximate Newton Raphson Trust Region method in cell " << cell << "\n";
+				/*if(cell == 25)
+				{
+					std::cout << "Using approximate Newton Raphson Trust Region method in cell " << cell << "\n";
+					saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, saturation_[cell], M, maxit_, tol_, true, iters_used);
+				}
+				else*/
 				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, saturation_[cell], M, maxit_, tol_, getVerbose(), iters_used);
 			}
 		}
@@ -484,6 +498,273 @@ namespace Opm
         mob[1] /= visc_[1];
         return mob[0]/(mob[0] + mob[1]);
     }
+    
+    void TransportSolverTwophaseReorder::initInflectionPoint(const double M)
+    {
+		if(getVerbose())
+			std::cout << "Computing fractional flow function inflection point ...\n";
+		
+		std::vector<double> roots;
+		computeRoots(roots,M);
+		
+		bool found = false;
+		std::vector<double>::const_iterator iter = roots.begin();
+		while(!found && iter != roots.end())
+		{
+			if(getVerbose())
+				std::cout << "Checking root " << *iter << " ... \n";
+			if(checkRange(*iter))
+			{
+				flux_func_inflection_point_ = *iter;
+				found = true;
+			}
+			iter++;
+		}
+		if(found == false)
+			OPM_THROW(std::runtime_error,"Could not find the flow function inflection point.\n");
+		if(getVerbose())
+			std::cout << "Inflection point found at saturation " << flux_func_inflection_point_ << "\n";
+	}
+	void TransportSolverTwophaseReorder::computeRoots(std::vector<double> & roots, double M)
+	{
+		std::complex<double> up = computeU(M,true); 
+		std::complex<double> um = computeU(M,false);
+		if(getVerbose())
+			std::cout << "u_p: " << up << ", u_m: " << um << "\n";
+		computeX(roots,up);
+		computeX(roots,um);
+	}
+	std::complex<double> TransportSolverTwophaseReorder::computeU(double M, bool positive)
+    {
+		double t1,t2,t3,t4;
+		t1 = 1.0/8.0; t2 = -0.25*M/(M+1); t3 = pow(0.5*M/(M+1)-0.25, 2)-1.0/16.0; t4 = 0.5*pow(fabs(t3), 0.5);
+		if(getVerbose() && t3 > 0)
+			std::cout << "Warning: Positive b^2-4ac, something smells fishy!\n";
+		if(!positive)
+			t4 = -t4;
+		std::complex<double> var(t1+t2,t4);
+		return var;
+	}
+	void TransportSolverTwophaseReorder::computeX(std::vector<double> & roots, std::complex<double> u)
+	{
+		if(getVerbose())
+			std::cout << "Computing complex roots from " << u << "\n";
+		double precision = 1e-6;
+		
+		double r = sqrt( fabs(u.real())*fabs(u.real()) + fabs(u.imag())*fabs(u.imag()) );
+		double theta = M_PI;
+		if(checkTarget(u.real(),precision))
+			theta = M_PI/2.0;
+		else
+			theta = atan(u.imag()/u.real());
+			
+		double sqrt3r = pow(r,1.0/3); 
+		
+		double innerTrig = computeInnerTrigArguments(theta,3,0);
+		double real = sqrt3r*cos(innerTrig); double imag = sqrt3r*sin(innerTrig);
+		std::complex<double> z1(real,imag);
+		
+		innerTrig = computeInnerTrigArguments(theta,3,1);
+		real = sqrt3r*cos(innerTrig); imag = sqrt3r*sin(innerTrig);
+		std::complex<double> z2(real,imag);
+		
+		innerTrig = computeInnerTrigArguments(theta,3,2);
+		real = sqrt3r*cos(innerTrig); imag = sqrt3r*sin(innerTrig);
+		std::complex<double> z3(real,imag);
+		
+		if(getVerbose())
+			std::cout << "Complex roots: " << z1 << ", " << z2 << ", " << z3 << "\n";
+		
+		z1 = computeY(z1); z2 = computeY(z2); z3 = computeY(z3); // Reusing z variables instead of making complex x and y vars
+		
+		if(getVerbose())
+			std::cout << "Complex y-values from roots: " << z1 << ", " << z2 << ", " << z3 << "\n";
+		
+		if(checkTarget(z1.imag(),precision))
+			roots.push_back(computeX(z1.real()));
+		if(checkTarget(z2.imag(),precision))
+			roots.push_back(computeX(z2.real()));
+		if(checkTarget(z3.imag(),precision))
+			roots.push_back(computeX(z3.real()));
+	}
+	std::complex<double> TransportSolverTwophaseReorder::computeY(std::complex<double> z)
+    {
+		if(z.imag() == 0.0 && z.real() == 0.0)
+		{
+			OPM_THROW(std::runtime_error,"Can't compute y-value from a zero-valued u\n");
+			return 1;
+		}
+		return z + 0.25/z;
+	}
+	// Utilities
+	bool TransportSolverTwophaseReorder::checkTarget(double val, double target, double precision)
+	{
+		return val <= target + precision && val >= target - precision;
+	}
+	bool TransportSolverTwophaseReorder::checkTarget(double val, double precision)
+	{
+		return checkTarget(val, 0, precision);
+	}
+	bool TransportSolverTwophaseReorder::checkRange(double s)
+    {
+		return (s <= 1.0 && s >= 0.0);
+	}
+	double TransportSolverTwophaseReorder::computeInnerTrigArguments(double theta, double n, double k)
+	{
+		return theta/n + 2*M_PI*k/n;
+	}
+	// Real functions
+	void TransportSolverTwophaseReorder::computeRootsFromSignCases(std::vector<double> & roots, double u)
+	{
+		if(u >= 0)
+			roots.push_back(computeX(computeY(computeZ(u))));
+		else
+			computeX(roots,u);
+	}
+	void TransportSolverTwophaseReorder::computeX(std::vector<double> & roots, double u)
+	{
+		if(getVerbose())
+			std::cout << "Computing complex roots from " << u << "\n";
+		double precision = 1e-6;
+		double theta = M_PI; double r = fabs(u);
+		double sqrt3r = pow(r,1.0/3); 
+		
+		double innerTrig = computeInnerTrigArguments(theta,3,0);
+		double real = sqrt3r*cos(innerTrig); double imag = sqrt3r*sin(innerTrig);
+		std::complex<double> z1(real,imag);
+		
+		innerTrig = computeInnerTrigArguments(theta,3,1);
+		real = sqrt3r*cos(innerTrig); imag = sqrt3r*sin(innerTrig);
+		std::complex<double> z2(real,imag);
+		
+		innerTrig = computeInnerTrigArguments(theta,3,2);
+		real = sqrt3r*cos(innerTrig); imag = sqrt3r*sin(innerTrig);
+		std::complex<double> z3(real,imag);
+		
+		if(getVerbose())
+			std::cout << "Complex roots: " << z1 << ", " << z2 << ", " << z3 << "\n";
+		
+		z1 = computeY(z1); z2 = computeY(z2); z3 = computeY(z3); // Reusing z variables instead of making complex x and y vars
+		
+		if(z1.imag() < precision && z1.imag() > -precision)
+			roots.push_back(z1.real());
+		if(z2.imag() < precision && z2.imag() > -precision)
+			roots.push_back(z2.real());
+		if(z2.imag() < precision && z3.imag() > -precision)
+			roots.push_back(z3.real());
+	}
+	double TransportSolverTwophaseReorder::computeU(double M, bool positive,bool dummy)
+    {
+		double t1,t2,t3;
+		t1 = 1.0/8.0; t2 = -0.25*M/(M+1); t3 = 0.5*pow(pow(0.5*M/(M+1)-0.25, 2)-1.0/16.0, 0.5);
+		if(!positive)
+			t3 = -t3;
+		return t1+t2+t3;
+	}
+	double TransportSolverTwophaseReorder::computeZ(double u)
+    {
+		if(u < 0)
+		{
+			OPM_THROW(std::runtime_error,"Can't compute z-value from negative u\n");
+			return 1;
+		}
+		return pow(u,1.0/3);
+	}
+	double TransportSolverTwophaseReorder::computeY(double z)
+    {
+		if(z == 0)
+		{
+			OPM_THROW(std::runtime_error,"Can't compute y-value from a zero-valued u\n");
+			return 1;
+		}
+		return z + 0.25/z;
+	}
+	double TransportSolverTwophaseReorder::computeX(double y)
+    {
+		return y + 0.5;
+	}
+    
+    void TransportSolverTwophaseReorder::initInflectionPoint_old(const double M)
+    {
+		/*double MP1 = M + 1;
+		double M2,M3,M4,M5;
+		M2 = M*M; M3 = M2*M; M4 = M3*M; M5 = M4*M;
+		double inner_sqrt = 2*sqrt(-M5-4*M4-6*M3-4*M2-M);
+		double alpha = 2*pow(-M3-M2+inner_sqrt+MP1,1.0/3.0); // Third root
+		double beta = MP1/alpha;
+		flux_func_inflection_point_ = 0.5*(beta + 1/beta + 1);*/
+		
+		double up,um;
+		up = computeU(M,true,false); um = computeU(M,false,false);
+		
+		if(up >= 0 && um >= 0)
+		{
+			double zp = computeZ(up); double zm = computeZ(um);
+			double xp,xm;
+			if(zp >= 0 && zm >= 0)
+			{
+				xp = computeX(computeY(zp)); 
+				xm = computeX(computeY(zm)); 
+				if(checkRange(xp))
+					flux_func_inflection_point_ = xp;
+				else if(checkRange(xm))
+					flux_func_inflection_point_ = xm;
+				else
+					OPM_THROW(std::runtime_error,"No inflection point found in range with two positive z-values\n");
+			}
+			else if(zp >= 0)
+			{
+				flux_func_inflection_point_ = computeX(computeY(zp));
+				if(!checkRange(flux_func_inflection_point_))
+					OPM_THROW(std::runtime_error,"Inflection point " << flux_func_inflection_point_ << " outside range using z_p\n");
+			}
+			else if(zm >= 0)
+			{
+				flux_func_inflection_point_ = computeX(computeY(zm));
+				if(!checkRange(flux_func_inflection_point_))
+					OPM_THROW(std::runtime_error,"Inflection point " << flux_func_inflection_point_ << " outside range using z_m\n");
+			}
+			else
+				OPM_THROW(std::runtime_error, "No inflection point found due to negative z-values\n");
+		}
+		else if(up >= 0)
+		{
+			double z = computeZ(up);
+			if(z >= 0)
+			{
+				flux_func_inflection_point_ = computeX(computeY(z));
+				if(!checkRange(flux_func_inflection_point_))
+					OPM_THROW(std::runtime_error,"Inflection point " << flux_func_inflection_point_ << " outside range using u_p\n");
+			}
+			else
+				OPM_THROW(std::runtime_error,"No inflection point found due to negative z using u_p\n");
+		}
+		else if(um >= 0)
+		{
+			double z = computeZ(um);
+			if(z >= 0)
+			{
+				flux_func_inflection_point_ = computeX(computeY(z));
+				if(!checkRange(flux_func_inflection_point_))
+					OPM_THROW(std::runtime_error,"Inflection point " << flux_func_inflection_point_ << " outside range using u_m\n");
+			}
+			else
+				OPM_THROW(std::runtime_error,"No inflection point found due to negative z using u_m\n");
+		}
+		else
+			OPM_THROW(std::runtime_error,"No inflection point found due to negative u-values This should never happen!\n");
+		
+		//double u = std::max(up,um);
+		//double z = pow(u,1.0/3.0);
+		//y = z + 1/(4*z);
+		//flux_func_inflection_point_ = y + 1/2;
+		std::cout << "Inflec. point fresh: " << flux_func_inflection_point_ << "\n";
+	}
+	
+	double TransportSolverTwophaseReorder::getInflectionPoint() 
+	{
+		return flux_func_inflection_point_;
+	}
     
     double TransportSolverTwophaseReorder::fracFlowDerivative(double s, int cell) const
     {

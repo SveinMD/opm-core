@@ -25,6 +25,8 @@
 #include <vector>
 #include <map>
 #include <ostream>
+#include <complex>
+
 struct UnstructuredGrid;
 
 namespace Opm
@@ -112,8 +114,29 @@ namespace Opm
         //// Return the number of iterations used by the reordering solver.
         //// \return vector of iteration per cell
         const std::vector<int>& getReorderIterations() const;
+        double getInflectionPoint();
 
     private:
+		void initInflectionPoint_old(const double M);
+		// Complex functions
+		void initInflectionPoint(const double M);
+		void computeRoots(std::vector<double> & roots, double M);
+		std::complex<double> computeU(double M, bool positive);
+		void computeX(std::vector<double> & roots, std::complex<double> u);
+		std::complex<double> computeY(std::complex<double> z);
+		// Utilities
+		bool checkTarget(double val, double target, double precision);
+		bool checkTarget(double val, double precision);
+		bool checkRange(double s);
+		double computeInnerTrigArguments(double theta, double n, double k);
+		// Real functions
+		void computeRootsFromSignCases(std::vector<double> & roots, double u);
+		void computeX(std::vector<double> & roots, double u);
+		double computeU(double M, bool positive, bool dummy);
+		double computeZ(double u);
+		double computeY(double z);
+		double computeX(double y);
+	
         void initGravity(const double* grav);
         void initColumns();
         virtual void solveSingleCell(const int cell);
@@ -133,6 +156,7 @@ namespace Opm
         int maxit_;
         char solver_type_;
         bool solver_flag_;
+        double flux_func_inflection_point_; // The point where the fractional flow function has an inflection point, i.e. d^2fw/ds^2 = 0
 
         const double* darcyflux_;   // one flux per grid face
         const double* porevolume_;  // one volume per cell
