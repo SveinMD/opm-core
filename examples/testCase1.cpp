@@ -122,6 +122,8 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 int main (int argc, char ** argv)
 try
 {
+	double muw = 1;
+	double muo = 1;
 	bool verbose = false;
 	bool solver_flag = false;
 	double time_step_days = 0.1;
@@ -205,6 +207,19 @@ try
 					i++;
 				    ydim = std::atoi(argv[i]);
 				}
+				std::cout << "Using " << xdim << " and " << ydim << " cell(s) in the x- and y-direction, respectively\n";
+			}
+			else if(std::string(argv[i]) == "-m")
+			{
+				i++;
+				muw = std::atof(argv[i]);
+				muo = muw;
+				if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
+				{ 
+					i++;
+				    muo = std::atoi(argv[i]);
+				}
+				std::cout << "Using viscosity " << muw << " and " << muo << " cP for water and oil, respectively\n";
 			}
 			else if(std::string(argv[i]) == "-v")
 			{
@@ -246,7 +261,7 @@ try
     using namespace Opm::unit;
     using namespace Opm::prefix;
     std::vector<double> density(num_phases, 1000.0);
-    static const double visc_arr[] = {1.0*centi*Poise, 10.0*centi*Poise}; // 1/10 case, water/oil
+    double visc_arr[] = {muw*centi*Poise, muo*centi*Poise}; // 1/10 case, water/oil
     //static const int [] visc_arr = {1.0*centi*Poise, 10.0*centi*Poise}; // 10/1 case, water/oil
     std::vector<double> viscosity(visc_arr, visc_arr + sizeof(visc_arr)/sizeof(double));
     //std::vector<double> viscosity(num_phases, 1.0*centi*Poise);
