@@ -641,7 +641,7 @@ namespace Opm
                       //<< "Func. val. at inflec: " << d2fw_inflec << "\n"
                       << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
-            /*if(verbose)
+            if(verbose)
             {
 				std::cout << "Viscosity ratio: " << visc_ratio << "\n";
             double thePoint = 0.4;
@@ -664,7 +664,7 @@ namespace Opm
 				file << xval << "\t" << f(xval) << "\t" << f.ds(xval) << "\t" << fw(xval,visc_ratio) << "\t" << dfw2(xval,visc_ratio) << "\t" << f(thePoint) + f.ds(thePoint)*(xval-thePoint) << "\n";
 			}
 			file.close();
-			}*/
+			}
             
             //double dfw2x = dfw2(x,visc_ratio);
             //double dfw2xNew = 0;

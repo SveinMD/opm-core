@@ -95,6 +95,8 @@ namespace Opm
         }
         setVerbose(verbose);
         initInflectionPoint(visc_[0]/visc_[1]);
+        if(getVerbose())
+			std::cout << "Inflection point " << flux_func_inflection_point_ << " initialized using viscosity ratio " << visc_[0]/visc_[1] << "\n";
     }
 
 	TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
@@ -502,17 +504,24 @@ namespace Opm
     void TransportSolverTwophaseReorder::initInflectionPoint(const double M)
     {
 		if(getVerbose())
-			std::cout << "Computing fractional flow function inflection point ...\n";
+			std::cout << "Computing fractional flow function inflection point using viscosity ratio " << M << " ...\n";
 		
 		std::vector<double> roots;
 		computeRoots(roots,M);
 		
+		std::vector<double>::const_iterator iter = roots.begin()-1;
+		if(getVerbose())
+		{
+			std::cout << "--- Found " << roots.size() << " roots ---\n";
+			while(++iter != roots.end())
+				std::cout << "x = " << *iter << "\n";
+			std::cout << "--- End roots ---\n";
+		}
+		
 		bool found = false;
-		std::vector<double>::const_iterator iter = roots.begin();
+		iter = roots.begin();
 		while(!found && iter != roots.end())
 		{
-			if(getVerbose())
-				std::cout << "Checking root " << *iter << " ... \n";
 			if(checkRange(*iter))
 			{
 				flux_func_inflection_point_ = *iter;
@@ -529,8 +538,8 @@ namespace Opm
 	{
 		std::complex<double> up = computeU(M,true); 
 		std::complex<double> um = computeU(M,false);
-		if(getVerbose())
-			std::cout << "u_p: " << up << ", u_m: " << um << "\n";
+		//if(getVerbose())
+		//	std::cout << "u_p: " << up << ", u_m: " << um << "\n";
 		computeX(roots,up);
 		computeX(roots,um);
 	}
@@ -548,15 +557,15 @@ namespace Opm
 	void TransportSolverTwophaseReorder::computeX(std::vector<double> & roots, std::complex<double> u)
 	{
 		if(getVerbose())
-			std::cout << "Computing complex roots from " << u << "\n";
-		double precision = 1e-6;
+			std::cout << "Computing complex roots z from z^3 = " << u << "\n";
+		double precision = 1e-8;
 		
-		double r = sqrt( fabs(u.real())*fabs(u.real()) + fabs(u.imag())*fabs(u.imag()) );
+		double r = sqrt( u.real()*u.real() + u.imag()*u.imag() );
 		double theta = M_PI;
 		if(checkTarget(u.real(),precision))
-			theta = M_PI/2.0;
+			theta = M_PI*0.5;
 		else
-			theta = atan(u.imag()/u.real());
+			theta = atan2(u.imag(),u.real());
 			
 		double sqrt3r = pow(r,1.0/3); 
 		
@@ -573,12 +582,12 @@ namespace Opm
 		std::complex<double> z3(real,imag);
 		
 		if(getVerbose())
-			std::cout << "Complex roots: " << z1 << ", " << z2 << ", " << z3 << "\n";
+			std::cout << "Found three complex roots z: " << z1 << ", " << z2 << ", " << z3 << "\n";
 		
 		z1 = computeY(z1); z2 = computeY(z2); z3 = computeY(z3); // Reusing z variables instead of making complex x and y vars
 		
 		if(getVerbose())
-			std::cout << "Complex y-values from roots: " << z1 << ", " << z2 << ", " << z3 << "\n";
+			std::cout << "Complex y-values from roots z: " << z1 << ", " << z2 << ", " << z3 << "\n";
 		
 		if(checkTarget(z1.imag(),precision))
 			roots.push_back(computeX(z1.real()));

@@ -229,6 +229,9 @@ try
 				std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 		}
 	}
+	
+	if(verbose)
+			std::cout << "----------------- Initializing problem -------------------\n";
 		
     /// We define the grid. A Cartesian grid with 400 cells,
     /// each being 10m along each side. Note that we treat the
@@ -340,7 +343,11 @@ try
     std::ostringstream vtkfilename;
 	
 	if(verbose)
-			std::cout << "Solving " << num_time_steps << " time steps\n";
+	{		
+		std::cout << "----------------- Solving " << num_time_steps << " time steps -------------------\n";
+		std::cout << "Press ENTER to continue computation... " << std::flush;
+		std::cin.ignore(std::numeric_limits<std::streamsize> ::max(), '\n');
+	}		
 	
 	time::StopWatch clock;
 	clock.start();
