@@ -197,6 +197,7 @@ list (APPEND EXAMPLE_SOURCE_FILES
 	tutorials/tutorial4.cpp
 	examples/test_driver.cpp
         examples/testCase1.cpp
+	examples/testCase2.cpp
 	)
 
 # originally generated with the command:
