@@ -337,7 +337,8 @@ try
     
     const double tolerance = 1e-9;
     const int max_iterations = 30;
-    Opm::TransportSolverTwophaseReorder transport_solver(grid, IncompPropertiesShadow(props).usePermeability(&perm[0]) , NULL, tolerance, max_iterations, solver_type, verbose, solver_flag);
+    IncompPropertiesShadow shadow_props(props);
+    Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]) , NULL, tolerance, max_iterations, solver_type, verbose, solver_flag);
 
     const double comp_length = comp_length_days*day;
     const double dt = time_step_days*day;
