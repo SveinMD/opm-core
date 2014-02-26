@@ -53,7 +53,7 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 	
 	// Set filename and open
 	iterfilename.str(""); 
-	iterfilename << "testCase1-iterations-s-" << solver_type << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
+	iterfilename << "testCase2-iterations-s-" << solver_type << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
 	std::ofstream file; file.open(iterfilename.str().c_str());
 	for ( int i = 0; i < num_cells; i++)
 	{
@@ -176,7 +176,45 @@ char & solver_type, bool & printIterations, string & perm_file_name, int & layer
 	}
 }
 
-bool readPermData(string perm_file_name, std::vector<double> & Kx, std::vector<double> & Ky, std::vector<double> & Kz)
+void constructCacheFileName(std::ostringstream & filename, int layer, int xstart, int xnum, int ystart, int ynum)
+{
+	filename << "permeabilities-z-" << layer << "-Kx-" << xstart << "-" << xnum << "-Ky-" << ystart << "-" << ynum << ".cache";
+}
+
+bool readPermDataFromCache(std::vector<double> perm, std::ifstream & cachefile, std::string cachefilename = "")
+{
+	string line;
+	if(cachefile.is_open())
+	{
+		while( getline(cachefile,line) )
+		{
+			boost::trim(line);
+			if(!line.empty())
+			{
+				std::vector<string> numbers;
+				boost::split(numbers,line,boost::is_any_of("\t "));
+				for(unsigned int i = 0;i < numbers.size(); i++)
+				{
+					boost::trim(numbers[i]);
+					if(!numbers[i].empty())
+					{
+						double num = atof(numbers[i].c_str());
+						perm.push_back(num);
+					}
+				}
+			}
+		}
+		cachefile.close();
+		return true;
+	}
+	else
+	{
+		std::cout << "Failed to open permeability cache file " << cachefilename << "\n";
+		return false;
+	}
+}
+
+bool readPermDataFromRawFile(string perm_file_name, std::vector<double> & Kx, std::vector<double> & Ky, std::vector<double> & Kz)
 {
 	string line;
 	std::ifstream infile(perm_file_name);
@@ -223,8 +261,15 @@ bool readPermData(string perm_file_name, std::vector<double> & Kx, std::vector<d
 	}
 }
 
-void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, int layer, int xstart, int xnum, int ystart, int ynum)
+void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, int layer, int xstart, int xnum, int ystart, int ynum, double buildCache)
 {
+	std::ofstream file;
+	if(buildCache)
+	{
+		std::ostringstream filename;
+		constructCacheFileName(filename,layer,xstart,xnum,ystart,ynum);
+		file.open(filename.str().c_str());
+	}
 	int xdim = 60; int ydim = 220;
 	int layerInd = layer*xdim*ydim; // Index of first value in the layer
 	int regionRowInd = xdim*ystart; // Index of the first element in the first row containing elements in the region, relative to selected layer
@@ -237,10 +282,12 @@ void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx
 			perm.push_back(Kx[index]);
 			perm.push_back(0); perm.push_back(0);
 			perm.push_back(Ky[index]);
-			//std::cout << Kx[index] << " ";
+			if(buildCache)
+				file << Kx[index] << "\t" << 0 << "\t" << 0 << "\t" << Ky[index] << "\n";
 		}
-		//std::cout << "\n";
 	}
+	//if(buildCache)
+	file.close();
 }
 
 int main (int argc, char ** argv)
@@ -268,26 +315,47 @@ try
 	if(verbose)
 	{
 		std::cout << "----------------- Initializing problem -------------------\n";
-		std::cout << "Reading permeabilities from file ...\n";
-	}
-	
-		
-	std::vector<double> Kx,Ky,Kz;
-	readPermData(perm_file_name,Kx,Ky,Kz);
-	
-	if(verbose)
-	{
-		std::cout << "Finished reading permeabilities\n";
-		std::cout << "Building permeability table ...\n";
+		std::cout << "Initializing permeability table ... \n";
 	}
 	
 	std::vector<double> perm;
-	buildPermMatrixForRegion(perm,Kx,Ky,layer,xstart,xnum,ystart,ynum);
+	
+	std::ostringstream cachefilename;
+	cachefilename.str("");
+	constructCacheFileName(cachefilename,layer,xstart,xnum,ystart,ynum);
+	std::ifstream cachefile; cachefile.open(cachefilename.str().c_str());
+	if(cachefile.is_open())
+	{
+		if(verbose)
+			std::cout << "Reading permeabilities from cache " << cachefilename.str() << " ... \n";
+		
+		readPermDataFromCache(perm, cachefile, cachefilename.str());
+		
+		if(verbose)
+			std::cout << "Finished reading and building permeability table. \n";
+	}
+	else
+	{
+		if(verbose)
+			std::cout << "Reading permeabilities from file ...\n";
+			
+		std::vector<double> Kx,Ky,Kz;
+		readPermDataFromRawFile(perm_file_name,Kx,Ky,Kz);
+		
+		if(verbose)
+		{
+			std::cout << "Finished reading permeabilities\n";
+			std::cout << "Building permeability table ...\n";
+		}
+		
+		buildPermMatrixForRegion(perm,Kx,Ky,layer,xstart,xnum,ystart,ynum,true);
+		
+		if(verbose)
+			std::cout << "Finished building permeability table\n";
+	}
 	
 	if(verbose)
-	{
-		std::cout << "Finished buildling permeability table\n";
-	}
+			std::cout << "Permeability table initialized. \n";
 	
 	//return 0;
 		
@@ -377,7 +445,7 @@ try
 			printIterationsFromVector(transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
 			
 	        vtkfilename.str("");
-	        vtkfilename << "testCase1-s-" << solver_type << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
+	        vtkfilename << "testCase2-s-" << solver_type << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
 	        std::ofstream vtkfile(vtkfilename.str().c_str());
 	        Opm::DataMap dm;
 	        dm["saturation"] = &state.saturation();
