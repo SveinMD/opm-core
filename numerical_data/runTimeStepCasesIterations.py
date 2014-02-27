@@ -5,13 +5,11 @@ import sys
 from os import path
 
 solver = "r"
-filename = "../bin/testCase2"
+filename = "../bin/testCase1"
 end_time = "2"
 n_runs = 10
 solver_flag = False
 print_flag = False
-muw = "1"
-muo = "1"
 
 i = 1
 while(i < len(sys.argv)):
@@ -21,12 +19,6 @@ while(i < len(sys.argv)):
         solver = sys.argv[i]
 	if(i+1 < len(sys.argv) and not sys.argv[i+1].startswith("-")):
             solver_flag = True
-            i += 1
-    elif(arg == "-m"):
-         i += 1
-         muw = sys.argv[i]
-	 if(i+1 < len(sys.argv) and not sys.argv[i+1].startswith("-")):
-	    muo = sys.argv[i+1]
             i += 1
     elif(arg == "-f"):
         i = i + 1
@@ -46,17 +38,17 @@ while(i < len(sys.argv)):
 
 print("Runing " + path.basename(filename) + " " + str(n_runs) + " time(s) with solver " + solver + " and sim. time " + end_time)    
 
-#v_dt = [0.1]
+#v_dt = [0.01,0.05,0.1,0.5,1.0,3,5,7,10]
 v_dt = [10,25,50,75,100,150,200,250,300, 400, 500, 600, 700, 800, 900, 1000]
 
-arguments = [filename,"-s",solver,"-m",muw,muo,"-T",end_time,"-t"]
+arguments = [filename,"-s",solver,"-T",end_time,"-t"]
 extra_param = ""
 if(solver_flag):
     extra_param = "a"
     arguments.insert(3,extra_param)
 if(print_flag):
-    arguments.insert(1,"-p")
-dataoutfilename = path.basename(filename)+"-cputvsdt-s-"+solver+extra_param+"-T-"+str(end_time)+"-m-"+muw+"-"+muo+".data"
+    arguments.insert(1,"-")
+dataoutfilename = path.basename(filename)+"-cputvsdt-s-"+solver+extra_param+"-T-"+str(end_time)+".data"
 dataoutfile = open(dataoutfilename,'w')
 for dt in v_dt:
     print("dt = " + str(dt) + ": ")

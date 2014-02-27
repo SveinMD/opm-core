@@ -1,10 +1,15 @@
 % compare vtu data sets
 
-path = './numerical_data/';
+clear all;
+
+path = './';
 fileBase = 'testCase1';
-newton = 'n';
+tend = '2_000000';
+tstep = '0_100000';
+solv_list = ['t ';'ta';'b ';'i '];
+nsol = length(solv_list);
+solv_list = cellstr(solv_list);
 regula_falsi = 'r';
-trust_region = 't';
 fileExt = '.vtu';
 
 numberOfPoints = 20;
@@ -12,21 +17,36 @@ error = zeros(numberOfPoints,1);
 nProd = zeros(numberOfPoints,1);
 rfProd = zeros(numberOfPoints,1);
 
-for i = 0:numberOfPoints-1
+fullName = @(solver,number) strcat(path,fileBase,'-s-',solver,'-T-',tend,'-t-',tstep,'-',number,fileExt);
 
-fileNumber = sprintf('%03d',i);
-nFile = strcat(path,fileBase,'-',trust_region,'-',fileNumber,fileExt);
-rfFile = strcat(path,fileBase,'-',regula_falsi,'-',fileNumber,fileExt);
-
-n = readXmlDataArray(nFile);
-rf = readXmlDataArray(rfFile);
-
-%var = genvarname(['diff_t' fileNumber]);
-%eval([var '= norm(n-rf)']);
-error(i+1) = norm(n(:,1)-rf(:,1));
-nProd(i+1) = n(end,1);
-rfProd(i+1) = rf(end,1);
-
+for i = 1:nsol
+    solv_char = solv_list{i};
+    var = genvarname(['diff_s_' solv_char]);
+    eval([var '= [];']);
 end
 
-relErrProd = abs(nProd-rfProd); %./rfProd;
+for i = 0:numberOfPoints-1
+    fileNumber = sprintf('%03d',i);
+    rfFile = fullName('r',fileNumber);
+    rf = readXmlDataArray(rfFile);
+    for i = 1:nsol
+        solv_char = solv_list{i};
+        solverFile = fullName(solv_char,fileNumber);
+        solverResults = readXmlDataArray(solverFile);
+        
+        var = genvarname(['diff_s_' solv_char]);
+        eval([var '= [' var ' norm(solverResults-rf)];']);
+        
+        %error(i+1) = norm(solverResults(:,1)-rf(:,1));
+        %nProd(i+1) = solverResults(end,1);
+        %rfProd(i+1) = rf(end,1);
+    end
+end
+
+for i = 1:nsol
+    solv_char = solv_list{i};
+    var = genvarname(['diff_s_' solv_char]);
+    eval(['save ' var '.data ' var ' -ascii']);
+end
+
+%relErrProd = abs(nProd-rfProd); %./rfProd;
