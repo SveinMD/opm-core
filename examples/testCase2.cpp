@@ -31,6 +31,172 @@
 
 using std::string;
 
+
+string replaceStrChar(string str, const string & replace, char ch);
+void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & transport_solver, 
+							   int i, int num_cells, const char solver_type, 
+							   const double comp_length, const double time_step);
+void parseArguments(int argc, char ** argv, double & muw, double & muo, 
+					bool & verbose, bool & solver_flag, 
+					double & time_step_days, double & comp_length_days, 
+					double & xsize, double & ysize, int & xdim, int & ydim, char & solver_type, 
+					bool & printIterations, string & perm_file_name, 
+					int & layer, double & xpos, double & ypos);
+void constructCacheFileName(std::ostringstream & filename, int layer, 
+							double xstart, double xsize, int xnum, 
+							double ystart, double ysize, int ynum);
+void constructCacheFileName(std::ostringstream & filename, int layer, 
+							int xstart, int xnum, int ystart, int ynum);
+bool readPermDataFromCache(std::vector<double> perm, 
+						   std::ifstream & cachefile, std::string cachefilename = "");
+bool readPermDataFromRawFile(string perm_file_name, std::vector<double> & Kx,
+							 std::vector<double> & Ky, std::vector<double> & Kz);
+void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, 
+							  std::vector<double> Ky, int layer, int xstart, 
+							  int xnum, int ystart, int ynum, double buildCache);
+void buildPermData(string perm_file_name, std::vector<double> & perm, 
+				   int layer, int xstart, int xnum, int ystart, int ynum, bool verbose);
+void buildPermData(string perm_file_name, std::vector<double> & perm, int layer,
+				   double xpos, double ypos, double xsize, double ysize, int nxcells,
+				   int nycells, double xsizeperm, double ysizeperm, int nxcellsperm,
+				   int nycellsperm, bool verbose);
+double interpolate(double fa,double a,double fb,double b,double target);
+void interpolatePermData(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky,
+						 int layer, double xpos, double ypos, double xsize, double ysize,
+						 int nxcells, int nycells, double xsizeperm, double ysizeperm,
+						 int nxcellsperm, int nycellsperm, double buildCache);
+
+int main (int argc, char ** argv)
+try
+{
+	int nx = 20; int ny = 20; int nz = 1;
+	int layer = 0;
+	int nxperm = 60; int nyperm = 220;
+	
+	double xpos = 0; double ypos = 0;
+	double dxperm = 365.76; double dyperm = 670.56;
+	double dx = 10.0; double dy = 10.0; double dz = 10.0;
+	double muw = 1; double muo = 1;
+	double time_step_days = 0.1;
+	double comp_length_days = 2;
+	
+	bool verbose = false;
+	bool printIterations = false;
+	bool solver_flag = false;
+	
+	char solver_type = 'r';
+	
+	string perm_file_name = "spe_perm.dat";
+	
+	if(argc > 1)
+		parseArguments(argc, argv, muw, muo, verbose, solver_flag, time_step_days, comp_length_days, 
+					   dx, dy, nx, ny, solver_type, printIterations, perm_file_name, layer, xpos, ypos);
+			
+	if(verbose)
+		std::cout << "----------------- Initializing problem -------------------\n";
+	
+	std::vector<double> perm;
+	buildPermData(perm_file_name, perm, layer, xpos, ypos, dx, dy, nx, ny, 
+				  dxperm, dyperm, nxperm, nyperm, verbose);
+	
+	//std::cout << xpos << " " << ypos << " " << dx << " " << dy << " " << nx << " " << ny << " " << dxperm << " " << dyperm << " " << nxperm << " " << nyperm << "\n";
+	
+    using namespace Opm;
+    GridManager grid_manager(nx, ny, nz, dx, dy, dz);
+    const UnstructuredGrid& grid = *grid_manager.c_grid();
+    int num_cells = grid.number_of_cells;
+    
+    int num_phases = 2;
+    using namespace Opm::unit;
+    using namespace Opm::prefix;
+    std::vector<double> density(num_phases, 1000.0);
+    double visc_arr[] = {muw*centi*Poise, muo*centi*Poise};
+    std::vector<double> viscosity(visc_arr, visc_arr + sizeof(visc_arr)/sizeof(double));
+    double porosity = 0.5;
+    double permeability = 10.0*milli*darcy;
+    SaturationPropsBasic::RelPermFunc rel_perm_func = SaturationPropsBasic::Quadratic;
+
+    IncompPropertiesBasic props(num_phases, rel_perm_func, density, viscosity,
+                                porosity, permeability, grid.dimensions, num_cells);
+
+    const double *grav = 0;
+    std::vector<double> omega;
+
+    std::vector<double> src(num_cells, 0.0);
+    src[0] = 1.;
+    src[num_cells-1] = -1.;
+
+    FlowBCManager bcs;
+
+    LinearSolverUmfpack linsolver;
+    IncompTpfa psolver(grid, props, linsolver, grav, NULL, src, bcs.c_bcs());
+
+    WellState well_state;
+    
+    std::vector<double> porevol;
+    Opm::computePorevolume(grid, props.porosity(), porevol);
+    
+    const double tolerance = 1e-9;
+    const int max_iterations = 30;
+    IncompPropertiesShadow shadow_props(props);
+    Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]) , NULL, tolerance, max_iterations, solver_type, verbose, solver_flag);
+
+    const double comp_length = comp_length_days*day;
+    const double dt = time_step_days*day;
+    const int num_time_steps = comp_length/dt;
+    
+    std::cout << "Time step length: " << dt << std::endl;
+
+    std::vector<int> allcells(num_cells);
+    for (int cell = 0; cell < num_cells; ++cell) {
+        allcells[cell] = cell;
+    }
+
+    TwophaseState state;
+    state.init(grid, 2);
+    state.setFirstSat(allcells, props, TwophaseState::MinSat);
+
+    std::ostringstream vtkfilename;
+	
+	if(verbose)
+	{		
+		std::cout << "----------------- Solving " << num_time_steps << " time steps -------------------\n";
+		std::cout << "Press ENTER to continue computation... " << std::flush;
+		std::cin.ignore(std::numeric_limits<std::streamsize> ::max(), '\n');
+	}		
+	
+	time::StopWatch clock;
+	clock.start();
+    for (int i = 0; i < num_time_steps; ++i) {
+
+        psolver.solve(dt, state, well_state);
+
+        transport_solver.solve(&porevol[0], &src[0], dt, state);
+        
+        if(printIterations)
+		{
+			printIterationsFromVector(transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
+			
+	        vtkfilename.str("");
+	        vtkfilename << "testCase2-s-" << solver_type << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
+	        std::ofstream vtkfile(vtkfilename.str().c_str());
+	        Opm::DataMap dm;
+	        dm["saturation"] = &state.saturation();
+	        dm["pressure"] = &state.pressure();
+	        Opm::writeVtkData(grid, dm, vtkfile);
+		}
+		if(verbose)
+			std::cout << "Solved step " << i+1 << " of " << num_time_steps << "\n";
+    }
+    clock.stop();
+    std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";
+}
+catch (const std::exception &e) {
+    std::cerr << "Program threw an exception: " << e.what() << "\n";
+    throw;
+}
+
+
 string replaceStrChar(string str, const string & replace, char ch)
 {
 	size_t found = str.find_first_of(replace);
@@ -64,9 +230,8 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 
 void parseArguments(int argc, char ** argv, 
 double & muw, double & muo, bool & verbose, bool & solver_flag, 
-double & time_step_days, double & comp_length_days, int & xdim, int & ydim, 
-char & solver_type, bool & printIterations, string & perm_file_name, int & layer, int & xstart, int & xnum, 
-					   int & ystart, int & ynum)
+double & time_step_days, double & comp_length_days, double & xsize, double & ysize, int & xdim, int & ydim,
+char & solver_type, bool & printIterations, string & perm_file_name, int & layer, double & xpos, double & ypos)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
@@ -166,14 +331,26 @@ char & solver_type, bool & printIterations, string & perm_file_name, int & layer
 		else if(std::string(argv[i]) == "--perm")
 		{
 			layer = atof(argv[++i]);
-			xstart = atof(argv[++i]);
-			xnum = atof(argv[++i]);
-			ystart = atof(argv[++i]);
-			ynum = atof(argv[++i]);
+			xpos = atof(argv[++i]);
+			ypos = atof(argv[++i]);
+		}
+		else if(std::string(argv[i]) == "--dim")
+		{
+			xsize = std::atof(argv[++i]);
+			ysize = std::atof(argv[++i]);
+			xdim = std::atoi(argv[++i]);
+			ydim = std::atoi(argv[++i]);
+			
+			std::cout << "Using " << xdim << "x" << ydim << " cells on a " << xsize << " m by " << ysize << " m domain.\n";
 		}
 		else
 			std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 	}
+}
+
+void constructCacheFileName(std::ostringstream & filename, int layer, double xstart, double xsize, int xnum, double ystart, double ysize, int ynum)
+{
+	filename << "permeabilities-z-" << layer << "-Kx-" << replaceStrChar(boost::lexical_cast<std::string>(xstart),"_",'.') << "-" << replaceStrChar(boost::lexical_cast<std::string>(xsize),"_",'.') << "-" << xnum << "-Ky-" << replaceStrChar(boost::lexical_cast<std::string>(ystart),"_",'.') << "-" << replaceStrChar(boost::lexical_cast<std::string>(ysize),"_",'.') << "-" << ynum << ".cache";
 }
 
 void constructCacheFileName(std::ostringstream & filename, int layer, int xstart, int xnum, int ystart, int ynum)
@@ -181,7 +358,7 @@ void constructCacheFileName(std::ostringstream & filename, int layer, int xstart
 	filename << "permeabilities-z-" << layer << "-Kx-" << xstart << "-" << xnum << "-Ky-" << ystart << "-" << ynum << ".cache";
 }
 
-bool readPermDataFromCache(std::vector<double> perm, std::ifstream & cachefile, std::string cachefilename = "")
+bool readPermDataFromCache(std::vector<double> perm, std::ifstream & cachefile, std::string cachefilename)
 {
 	string line;
 	if(cachefile.is_open())
@@ -286,40 +463,13 @@ void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx
 				file << Kx[index] << "\t" << 0 << "\t" << 0 << "\t" << Ky[index] << "\n";
 		}
 	}
-	//if(buildCache)
 	file.close();
 }
 
-int main (int argc, char ** argv)
-try
+void buildPermData(string perm_file_name, std::vector<double> & perm, int layer, int xstart, int xnum, int ystart, int ynum, bool verbose)
 {
-	int layer = 0; 													 // Selected layer
-	int xstart = 0; int xnum = 20; int ystart = 0; int ynum = 20; // Selected region in layer
-	double muw = 1;
-	double muo = 1;
-	bool verbose = false;
-	bool solver_flag = false;
-	double time_step_days = 0.1;
-	double comp_length_days = 2;
-	int xdim = 20;
-	int ydim = 20;
-	char solver_type = 'r';
-	bool printIterations = false;
-	string perm_file_name = "spe_perm.dat";
-	// Check parameters
-	if(argc > 1)
-		parseArguments(argc, argv, muw, muo, verbose, solver_flag, time_step_days, comp_length_days, 
-					   xdim, ydim, solver_type, printIterations, perm_file_name, layer, xstart, xnum, 
-					   ystart, ynum);
-	
 	if(verbose)
-	{
-		std::cout << "----------------- Initializing problem -------------------\n";
 		std::cout << "Initializing permeability table ... \n";
-	}
-	
-	std::vector<double> perm;
-	
 	std::ostringstream cachefilename;
 	cachefilename.str("");
 	constructCacheFileName(cachefilename,layer,xstart,xnum,ystart,ynum);
@@ -330,9 +480,6 @@ try
 			std::cout << "Reading permeabilities from cache " << cachefilename.str() << " ... \n";
 		
 		readPermDataFromCache(perm, cachefile, cachefilename.str());
-		
-		if(verbose)
-			std::cout << "Finished reading and building permeability table. \n";
 	}
 	else
 	{
@@ -349,116 +496,179 @@ try
 		}
 		
 		buildPermMatrixForRegion(perm,Kx,Ky,layer,xstart,xnum,ystart,ynum,true);
-		
-		if(verbose)
-			std::cout << "Finished building permeability table\n";
 	}
 	
 	if(verbose)
-			std::cout << "Permeability table initialized. \n";
-	
-	//return 0;
+		std::cout << "Permeability table initialized. \n";
+}
+
+void buildPermData(string perm_file_name, std::vector<double> & perm, int layer,
+				   double xpos, double ypos, double xsize, double ysize, int nxcells,
+				   int nycells, double xsizeperm, double ysizeperm, int nxcellsperm,
+				   int nycellsperm, bool verbose)
+{
+	if(verbose)
+		std::cout << "Initializing permeability table ... \n";
+	std::ostringstream cachefilename;
+	cachefilename.str("");
+	constructCacheFileName(cachefilename,layer,xpos,xsize,nxcells,ypos,ysize,nycells);
+	std::ifstream cachefile; cachefile.open(cachefilename.str().c_str());
+	if(cachefile.is_open())
+	{
+		if(verbose)
+			std::cout << "Reading permeabilities from cache " << cachefilename.str() << " ... \n";
 		
-    /// The Opm::GridManager is responsible for creating and destroying the grid,
-    /// the UnstructuredGrid data structure contains the actual grid topology
-    /// and geometry.
-    int nx = xdim; // = 20;
-    int ny = ydim; // = 20;
-    int nz = 1;
-    double dx = 10.0;
-    double dy = 10.0;
-    double dz = 10.0;
-    using namespace Opm;
-    GridManager grid_manager(nx, ny, nz, dx, dy, dz);
-    const UnstructuredGrid& grid = *grid_manager.c_grid();
-    int num_cells = grid.number_of_cells;
-
-    int num_phases = 2;
-    using namespace Opm::unit;
-    using namespace Opm::prefix;
-    std::vector<double> density(num_phases, 1000.0);
-    double visc_arr[] = {muw*centi*Poise, muo*centi*Poise};
-    std::vector<double> viscosity(visc_arr, visc_arr + sizeof(visc_arr)/sizeof(double));
-    double porosity = 0.5;
-    double permeability = 10.0*milli*darcy;
-    SaturationPropsBasic::RelPermFunc rel_perm_func = SaturationPropsBasic::Quadratic;
-
-    IncompPropertiesBasic props(num_phases, rel_perm_func, density, viscosity,
-                                porosity, permeability, grid.dimensions, num_cells);
-
-    const double *grav = 0;
-    std::vector<double> omega;
-
-    std::vector<double> src(num_cells, 0.0);
-    src[0] = 1.;
-    src[num_cells-1] = -1.;
-
-    FlowBCManager bcs;
-
-    LinearSolverUmfpack linsolver;
-    IncompTpfa psolver(grid, props, linsolver, grav, NULL, src, bcs.c_bcs());
-
-    WellState well_state;
-    
-    std::vector<double> porevol;
-    Opm::computePorevolume(grid, props.porosity(), porevol);
-    
-    const double tolerance = 1e-9;
-    const int max_iterations = 30;
-    IncompPropertiesShadow shadow_props(props);
-    Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]) , NULL, tolerance, max_iterations, solver_type, verbose, solver_flag);
-
-    const double comp_length = comp_length_days*day;
-    const double dt = time_step_days*day;
-    const int num_time_steps = comp_length/dt;
-    
-    std::cout << "Time step length: " << dt << std::endl;
-
-    std::vector<int> allcells(num_cells);
-    for (int cell = 0; cell < num_cells; ++cell) {
-        allcells[cell] = cell;
-    }
-
-    TwophaseState state;
-    state.init(grid, 2);
-    state.setFirstSat(allcells, props, TwophaseState::MinSat);
-
-    std::ostringstream vtkfilename;
+		readPermDataFromCache(perm, cachefile, cachefilename.str());
+	}
+	else
+	{
+		if(verbose)
+			std::cout << "Reading permeabilities from file ...\n";
+			
+		std::vector<double> Kx,Ky,Kz;
+		readPermDataFromRawFile(perm_file_name,Kx,Ky,Kz);
+		
+		if(verbose)
+		{
+			std::cout << "Finished reading permeabilities\n";
+			std::cout << "Building permeability table ...\n";
+		}
+		
+		interpolatePermData(perm, Kx, Ky, layer, xpos, ypos, xsize, ysize, nxcells,
+							nycells, xsizeperm, ysizeperm, nxcellsperm, nycellsperm, true);
+	}
 	
 	if(verbose)
-	{		
-		std::cout << "----------------- Solving " << num_time_steps << " time steps -------------------\n";
-		std::cout << "Press ENTER to continue computation... " << std::flush;
-		std::cin.ignore(std::numeric_limits<std::streamsize> ::max(), '\n');
-	}		
+		std::cout << "Permeability table initialized. \n";
+}	
+
+void interpolatePermData(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky,
+						 int layer, double xpos, double ypos, double xsize, double ysize,
+						 int nxcells, int nycells, double xsizeperm, double ysizeperm,
+						 int nxcellsperm, int nycellsperm, double buildCache)
+{
+	std::ofstream file;
+	if(buildCache)
+	{
+		std::ostringstream filename;
+		constructCacheFileName(filename,layer,xpos,xsize,nxcells,ypos,ysize,nycells);
+		file.open(filename.str().c_str());
+	}
 	
-	time::StopWatch clock;
-	clock.start();
-    for (int i = 0; i < num_time_steps; ++i) {
-
-        psolver.solve(dt, state, well_state);
-
-        transport_solver.solve(&porevol[0], &src[0], dt, state);
-        
-        if(printIterations)
+	//double xpos,ypos,xsize,ysize; // Physical dimensions of computational domain
+	//int nxcells, nycells;		  // Number of cells in computational domain
+	double dxcell=xsize/nxcells;  // Size of computation cell, x direction
+	double dycell=ysize/nycells;  // Size of computation cell, y direction
+	
+	//double xsizeperm, ysizeperm;  // Physical dimensions of permeability data domain
+	//int nxcellsperm, nycellsperm; // Number of cells in permeability data
+	double dxcellperm = xsizeperm/nxcellsperm; // Size of cell in permeability data domain, x-direction
+	double dycellperm = ysizeperm/nycellsperm; // size of cell in permeability data domain, y direction
+	
+	int indyposraw = floor(ypos/dycellperm);
+	int indxposraw = floor(xpos/dxcellperm);
+	int layerIndRaw = layer*nxcellsperm*nycellsperm;
+	int regionRowIndRaw = nxcellsperm*indyposraw;
+	
+	if(xsize > xsizeperm || ysize > ysizeperm)
+		std::cout << "Size of computational domain exceeds size of permeability data set!\n"; // TODO: Throw some size error
+	
+	std::vector<double> permDataRaw;  // Raw data from the permeability data domain
+	std::vector<double> permDataComp; // Permeability data for the computational domain
+	for(int j = 0; j < nycells; j++)
+	{
+		double ycell = ypos + j*dycell + dycell*0.5; // y-coordinate of computational cell centre
+		int yindpermcell = floor(ycell/dycellperm);
+		int colIndRaw = nxcellsperm*yindpermcell + indxposraw;
+		for(int i = 0; i < nxcells; i++)
 		{
-			printIterationsFromVector(transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
+			double xcell = xpos + i*dxcell + dxcell*0.5; // x-coordinate of computational cell centre
+			int xindpermcell = floor(xcell/dxcellperm); // Index of cell in permeability domain
 			
-	        vtkfilename.str("");
-	        vtkfilename << "testCase2-s-" << solver_type << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
-	        std::ofstream vtkfile(vtkfilename.str().c_str());
-	        Opm::DataMap dm;
-	        dm["saturation"] = &state.saturation();
-	        dm["pressure"] = &state.pressure();
-	        Opm::writeVtkData(grid, dm, vtkfile);
+			int cellIndexRaw = layerIndRaw + regionRowIndRaw + colIndRaw + xindpermcell;
+			
+			bool printStuff = false;
+			
+			double Kx_target; double Ky_target;
+			if( xcell <= dxcellperm*0.5 || xcell >= (xsizeperm - dxcellperm*0.5) || ycell <= dycellperm*0.5 || ycell >= (ysizeperm - dycellperm*0.5) )
+			{
+				if(printStuff)
+				{
+					std::cout << "** Edge case **\n";
+					std::cout << "(" << i << "," << j << "),(" << xcell << "," << ycell << "),(" << dxcell << "," << dycell << "),(" << dxcellperm << "," << dycellperm << "),(" << xindpermcell << "," << yindpermcell << ")\n";
+				}
+				Kx_target = Kx[cellIndexRaw];
+				Ky_target = Ky[cellIndexRaw];
+				
+				if(printStuff)
+				{
+					std::cout << Kx_target << "\n";
+					std::cout << "** End edge case **\n";
+				}
+			}
+			else // Interpolate
+			{
+				if(printStuff)
+					std::cout << "** Inner case **\n";
+				
+				double y1 = yindpermcell*dycellperm+0.5*dycellperm;
+				int ysign = (ycell > y1) ? 1 : -1;
+				
+				double x1 = xindpermcell*dxcellperm+0.5*dxcellperm;
+				int xsign = (xcell > x1) ? 1 : -1;
+				
+				double y2 = (yindpermcell + ysign)*dycellperm+0.5*dycellperm;
+				double x2 = (xindpermcell + xsign)*dxcellperm+0.5*dxcellperm;
+				
+				int p1 = cellIndexRaw; // Base cell
+				int p2 = p1 + xsign; // Next cell in x-direction
+				int p3 = p1 + ysign*nxcellsperm; // Next cell in y-direction
+				int p4 = p3 + xsign; // Next cell in both x- and y-direction
+				
+				if(printStuff)
+				{
+					std::cout << "(" << i << "," << j << "),(" << xcell << "," << ycell << "),(" << xindpermcell << "," << yindpermcell << "),(" << p1 << ", " << p2 << ", " << p3 << ", " << p4 << ")\n";
+					std::cout << "(" << y1 << "," << y2 << "),(" << Kx[p1] << "," << Kx[p3] << ")\n";
+				}
+				double Kx_y1 = interpolate(Kx[p1],y1,Kx[p3],y2,ycell);
+				
+				if(printStuff)
+					std::cout << "(" << y1 << "," << y2 << "),(" << Kx[p2] << "," << Kx[p4] << ")\n";
+				double Kx_y2 = interpolate(Kx[p2],y1,Kx[p4],y2,ycell);
+				
+				if(printStuff)
+					std::cout << "(" << x1 << "," << x2 << "),(" << Kx_y1 << "," << Kx_y2 << ")\n";
+				Kx_target = interpolate(Kx_y1,x1,Kx_y2,x2,xcell);
+				
+				double Ky_y1 = interpolate(Ky[p1],y1,Ky[p3],y2,ycell);
+				double Ky_y2 = interpolate(Ky[p2],y1,Ky[p4],y2,ycell);
+				Ky_target = interpolate(Ky_y1,x1,Ky_y2,x2,xcell);
+				
+				if(printStuff)
+				{
+					std::cout << "(" << xcell << "," << Kx_target << ")\n";
+					std::cout << "** End inner case **\n";
+				}
+			}
+			
+			perm.push_back(Kx_target);
+			perm.push_back(0); perm.push_back(0);
+			perm.push_back(Ky_target);
+			if(buildCache)
+				file << Kx_target << "\t" << 0 << "\t" << 0 << "\t" << Ky_target << "\n";
 		}
-		if(verbose)
-			std::cout << "Solved step " << i+1 << " of " << num_time_steps << "\n";
-    }
-    clock.stop();
-    std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";
+	}
+	file.close();
 }
-catch (const std::exception &e) {
-    std::cerr << "Program threw an exception: " << e.what() << "\n";
-    throw;
+
+double interpolate(double fa,double a,double fb,double b,double target)
+{
+	if( target < std::min(a,b) || target > std::max(a,b) )
+		std::cout << "Interpolation error!\n"; // TODO: Throw some range error
+	if(b == a)
+		return fa;
+	double ftarget = fa + (fb-fa)/(b-a)*(target-a);
+	if(ftarget < 0)
+		std::cout << "Negative permeability using (" << fa << "," << a << "),(" << fb << "," << b << ") with target " << target << "\n";
+	return ftarget;
 }
