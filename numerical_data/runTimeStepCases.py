@@ -15,7 +15,7 @@ muo = "1"
 sizex = "10"
 sizey = "10"
 ncellx = "20"
-ncell y = "20"
+ncelly = "20"
 
 i = 1
 while(i < len(sys.argv)):
