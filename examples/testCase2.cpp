@@ -179,7 +179,10 @@ try
 			printIterationsFromVector(transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
 			
 	        vtkfilename.str("");
-	        vtkfilename << "testCase2-s-" << solver_type << extra_solver_char << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
+	        vtkfilename << "testCase2-s-" << solver_type;
+	        if(solver_flag)
+				vtkfilename << extra_solver_char;
+	        vtkfilename << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') << i << ".vtu";
 	        std::ofstream vtkfile(vtkfilename.str().c_str());
 	        Opm::DataMap dm;
 	        dm["saturation"] = &state.saturation();
