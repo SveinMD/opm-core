@@ -47,12 +47,12 @@ void constructCacheFileName(std::ostringstream & filename, int layer,
 							double ystart, double ysize, int ynum);
 void constructCacheFileName(std::ostringstream & filename, int layer, 
 							int xstart, int xnum, int ystart, int ynum);
-bool readPermDataFromCache(std::vector<double> perm, 
+bool readPermDataFromCache(std::vector<double> & perm, 
 						   std::ifstream & cachefile, std::string cachefilename = "");
 bool readPermDataFromRawFile(string perm_file_name, std::vector<double> & Kx,
 							 std::vector<double> & Ky, std::vector<double> & Kz);
 void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, 
-							  std::vector<double> Ky, int layer, int xstart, 
+							  std::vector<double> Ky, std::vector<double> Kz, int layer, int xstart, 
 							  int xnum, int ystart, int ynum, double buildCache);
 void buildPermData(string perm_file_name, std::vector<double> & perm, 
 				   int layer, int xstart, int xnum, int ystart, int ynum, bool verbose);
@@ -99,8 +99,6 @@ try
 	buildPermData(perm_file_name, perm, layer, xpos, ypos, dx, dy, nx, ny, 
 				  dxperm, dyperm, nxperm, nyperm, verbose);
 	
-	//std::cout << xpos << " " << ypos << " " << dx << " " << dy << " " << nx << " " << ny << " " << dxperm << " " << dyperm << " " << nxperm << " " << nyperm << "\n";
-	
     using namespace Opm;
     GridManager grid_manager(nx, ny, nz, dx, dy, dz);
     const UnstructuredGrid& grid = *grid_manager.c_grid();
@@ -118,7 +116,8 @@ try
 
     IncompPropertiesBasic props(num_phases, rel_perm_func, density, viscosity,
                                 porosity, permeability, grid.dimensions, num_cells);
-
+    IncompPropertiesShadow shadow_props(props);
+    
     const double *grav = 0;
     std::vector<double> omega;
 
@@ -129,8 +128,8 @@ try
     FlowBCManager bcs;
 
     LinearSolverUmfpack linsolver;
-    IncompTpfa psolver(grid, props, linsolver, grav, NULL, src, bcs.c_bcs());
-
+    IncompTpfa psolver(grid, shadow_props.usePermeability(&perm[0]), linsolver, grav, NULL, src, bcs.c_bcs());
+	
     WellState well_state;
     
     std::vector<double> porevol;
@@ -138,7 +137,6 @@ try
     
     const double tolerance = 1e-9;
     const int max_iterations = 30;
-    IncompPropertiesShadow shadow_props(props);
     Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]) , NULL, tolerance, max_iterations, solver_type, verbose, solver_flag);
 
     const double comp_length = comp_length_days*day;
@@ -154,7 +152,8 @@ try
 
     TwophaseState state;
     state.init(grid, 2);
-    state.setFirstSat(allcells, props, TwophaseState::MinSat);
+    //state.setFirstSat(allcells, props, TwophaseState::MinSat);
+    state.setFirstSat(allcells, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
 
     std::ostringstream vtkfilename;
 	
@@ -168,9 +167,7 @@ try
 	time::StopWatch clock;
 	clock.start();
     for (int i = 0; i < num_time_steps; ++i) {
-
         psolver.solve(dt, state, well_state);
-
         transport_solver.solve(&porevol[0], &src[0], dt, state);
         
         if(printIterations)
@@ -358,7 +355,7 @@ void constructCacheFileName(std::ostringstream & filename, int layer, int xstart
 	filename << "permeabilities-z-" << layer << "-Kx-" << xstart << "-" << xnum << "-Ky-" << ystart << "-" << ynum << ".cache";
 }
 
-bool readPermDataFromCache(std::vector<double> perm, std::ifstream & cachefile, std::string cachefilename)
+bool readPermDataFromCache(std::vector<double> & perm, std::ifstream & cachefile, std::string cachefilename)
 {
 	string line;
 	if(cachefile.is_open())
@@ -438,7 +435,7 @@ bool readPermDataFromRawFile(string perm_file_name, std::vector<double> & Kx, st
 	}
 }
 
-void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, int layer, int xstart, int xnum, int ystart, int ynum, double buildCache)
+void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, std::vector<double> Kz, int layer, int xstart, int xnum, int ystart, int ynum, double buildCache)
 {
 	std::ofstream file;
 	if(buildCache)
@@ -456,17 +453,28 @@ void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx
 		for(int j = 0; j < xnum; j++) // Iterate over number of cells in x-dir of region
 		{
 			int index = layerInd + regionRowInd + colInd + j;
-			perm.push_back(Kx[index]);
-			perm.push_back(0); perm.push_back(0);
-			perm.push_back(Ky[index]);
+			
+			//perm.push_back(Kx[index]);
+			//perm.push_back(0); perm.push_back(0);
+			//perm.push_back(Ky[index]);
+			
+			perm.push_back(Kx[index]); perm.push_back(0); 			perm.push_back(0);
+			perm.push_back(0);		   perm.push_back(Ky[index]);	perm.push_back(0);
+			perm.push_back(0);		   perm.push_back(0);			perm.push_back(Kz[index]);
+			
 			if(buildCache)
-				file << Kx[index] << "\t" << 0 << "\t" << 0 << "\t" << Ky[index] << "\n";
+				file << Kx[index] << "\t" << 0 		   << "\t" << 0 		<< "\t"
+				     << 0         << "\t" << Ky[index] << "\t" << 0 		<< "\t"
+				     << 0         << "\t" << 0 		   << "\t" << Kz[index] << "\n";
+				//file << Kx[index] << "\t" << Ky[index] << "\t" << Kz[index] << "\n";
+				//file << Kx[index] << "\t" << 0 << "\t" << 0 << "\t" << Ky[index] << "\n";
 		}
 	}
 	file.close();
 }
 
-void buildPermData(string perm_file_name, std::vector<double> & perm, int layer, int xstart, int xnum, int ystart, int ynum, bool verbose)
+void buildPermData(string perm_file_name, std::vector<double> & perm, 
+				   int layer, int xstart, int xnum, int ystart, int ynum, bool verbose)
 {
 	if(verbose)
 		std::cout << "Initializing permeability table ... \n";
@@ -495,7 +503,7 @@ void buildPermData(string perm_file_name, std::vector<double> & perm, int layer,
 			std::cout << "Building permeability table ...\n";
 		}
 		
-		buildPermMatrixForRegion(perm,Kx,Ky,layer,xstart,xnum,ystart,ynum,true);
+		buildPermMatrixForRegion(perm,Kx,Ky,Kz,layer,xstart,xnum,ystart,ynum,true);
 	}
 	
 	if(verbose)
@@ -517,7 +525,6 @@ void buildPermData(string perm_file_name, std::vector<double> & perm, int layer,
 	{
 		if(verbose)
 			std::cout << "Reading permeabilities from cache " << cachefilename.str() << " ... \n";
-		
 		readPermDataFromCache(perm, cachefile, cachefilename.str());
 	}
 	else
@@ -651,11 +658,14 @@ void interpolatePermData(std::vector<double> & perm, std::vector<double> Kx, std
 				}
 			}
 			
-			perm.push_back(Kx_target);
-			perm.push_back(0); perm.push_back(0);
-			perm.push_back(Ky_target);
+			perm.push_back(Kx_target); perm.push_back(0); 			perm.push_back(0);
+			perm.push_back(0);		   perm.push_back(Ky_target);	perm.push_back(0);
+			perm.push_back(0);		   perm.push_back(0);			perm.push_back(0);
 			if(buildCache)
-				file << Kx_target << "\t" << 0 << "\t" << 0 << "\t" << Ky_target << "\n";
+				file << Kx_target << "\t" << 0 		   << "\t" << 0 << "\t"
+				     << 0         << "\t" << Ky_target << "\t" << 0 << "\t"
+				     << 0         << "\t" << 0 		   << "\t" << 0 << "\n";
+				//file << Kx_target << "\t" << 0 << "\t" << 0 << "\t" << Ky_target << "\n";
 		}
 	}
 	file.close();
