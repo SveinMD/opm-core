@@ -12,6 +12,10 @@ solver_flag = False
 print_flag = False
 muw = "1"
 muo = "1"
+sizex = "10"
+sizey = "10"
+ncellx = "20"
+ncell y = "20"
 
 i = 1
 while(i < len(sys.argv)):
@@ -40,6 +44,15 @@ while(i < len(sys.argv)):
     elif(arg == "-p"):
         i += 1
 	print_flag = True
+    elif(arg == "--dim"):
+        i += 1
+        sizex = sys.argv[i]
+        i += 1
+        sizey = sys.argv[i]
+        i += 1
+        ncellx = sys.argv[i]
+        i += 1
+        ncelly = sys.argv[i]
     else:
         print("Warning: Invalid argument: " + sys.argv[i])
     i = i + 1
@@ -56,7 +69,7 @@ if(solver_flag):
     arguments.insert(3,extra_param)
 if(print_flag):
     arguments.insert(1,"-p")
-dataoutfilename = path.basename(filename)+"-cputvsdt-s-"+solver+extra_param+"-T-"+str(end_time)+"-m-"+muw+"-"+muo+".data"
+dataoutfilename = path.basename(filename)+"-cputvsdt-s-"+solver+extra_param+"-T-"+str(end_time)+"-m-"+muw+"-"+muo+"-dim-"+sizex+"-"+sizey+"-"+ncellx+"-"+ncelly+".data"
 dataoutfile = open(dataoutfilename,'w')
 for dt in v_dt:
     print("dt = " + str(dt) + ": ")
