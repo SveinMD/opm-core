@@ -41,7 +41,7 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 					double & time_step_days, double & comp_length_days, 
 					double & xsize, double & ysize, int & xdim, int & ydim, char & solver_type, 
 					bool & printIterations, string & perm_file_name, 
-					int & layer, double & xpos, double & ypos);
+					int & layer, double & xpos, double & ypos, double & srcVol);
 void constructCacheFileName(std::ostringstream & filename, int layer, 
 							double xstart, double xsize, int xnum, 
 							double ystart, double ysize, int ynum);
@@ -79,6 +79,7 @@ try
 	double muw = 1; double muo = 1;
 	double time_step_days = 0.1;
 	double comp_length_days = 2;
+	double srcVol = 0.2;
 	
 	bool verbose = false;
 	bool printIterations = false;
@@ -90,7 +91,7 @@ try
 	
 	if(argc > 1)
 		parseArguments(argc, argv, muw, muo, verbose, solver_flag, time_step_days, comp_length_days, 
-					   dx, dy, nx, ny, solver_type, printIterations, perm_file_name, layer, xpos, ypos);
+					   dx, dy, nx, ny, solver_type, printIterations, perm_file_name, layer, xpos, ypos, srcVol);
 	
 	char extra_solver_char = '\0';
 	if(solver_flag)
@@ -125,9 +126,13 @@ try
     const double *grav = 0;
     std::vector<double> omega;
 
+	double injectedFluidAbsolute = srcVol; // m^3
+	double poreVolume = dz*dx*dy*porosity/(nx*ny);
+	double injectedFluidPoreVol = injectedFluidAbsolute/poreVolume;
+	
     std::vector<double> src(num_cells, 0.0);
-    src[0] = 1.;
-    src[num_cells-1] = -1.;
+    src[0] = injectedFluidPoreVol; //1.;
+    src[num_cells-1] = -injectedFluidPoreVol; //-1.;
 
     FlowBCManager bcs;
 
@@ -235,7 +240,7 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 void parseArguments(int argc, char ** argv, 
 double & muw, double & muo, bool & verbose, bool & solver_flag, 
 double & time_step_days, double & comp_length_days, double & xsize, double & ysize, int & xdim, int & ydim,
-char & solver_type, bool & printIterations, string & perm_file_name, int & layer, double & xpos, double & ypos)
+char & solver_type, bool & printIterations, string & perm_file_name, int & layer, double & xpos, double & ypos, double & srcVol)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
@@ -346,6 +351,10 @@ char & solver_type, bool & printIterations, string & perm_file_name, int & layer
 			ydim = std::atoi(argv[++i]);
 			
 			std::cout << "Using " << xdim << "x" << ydim << " cells on a " << xsize << " m by " << ysize << " m domain.\n";
+		}
+		else if(std::string(argv[i]) == "-i")
+		{
+			srcVol = std::atof(argv[++i]);
 		}
 		else
 			std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";

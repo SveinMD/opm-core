@@ -128,6 +128,7 @@ try
 	bool solver_flag = false;
 	double time_step_days = 0.1;
 	double comp_length_days = 2;
+	double srcVol = 0.2;
 	int xdim = 20;
 	int ydim = 20;
 	char solver_type = 'r';
@@ -225,6 +226,10 @@ try
 			{
 				verbose = true;
 			}
+			else if(std::string(argv[i]) == "-v")
+			{
+				srcVol = atof(argv[++i]);
+			}
 			else
 				std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 		}
@@ -290,11 +295,15 @@ try
     const double *grav = 0;
     std::vector<double> omega;
     
-    /// We set up the source term. Positive numbers indicate that the cell is a source,
+    double injectedFluidAbsolute = srcVol; // m^3
+	double poreVolume = dx*dy*dz*porosity/(xdim*ydim);
+	double injectedFluidPoreVol = injectedFluidAbsolute/poreVolume;
+	
+	/// We set up the source term. Positive numbers indicate that the cell is a source,
     /// while negative numbers indicate a sink.
     std::vector<double> src(num_cells, 0.0);
-    src[0] = 1.;
-    src[num_cells-1] = -1.;
+    src[0] = injectedFluidPoreVol; //1.;
+    src[num_cells-1] = -injectedFluidPoreVol; //-1.;
     
     /// We set up the boundary conditions. Letting bcs be empty is equivalent
     /// to no-flow boundary conditions.
