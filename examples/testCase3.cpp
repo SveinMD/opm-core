@@ -29,6 +29,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/filesystem.hpp>
 
 using std::string;
 
@@ -60,6 +61,7 @@ try
 	
 	string perm_file_name = "spe_perm.dat";
 	string print_points_file_name = "print_points.dat";
+	string execName = boost::filesystem::path(std::string(argv[0])).stem().string();
 	
 	using namespace Opm;
 	
@@ -160,7 +162,7 @@ try
     std::ostringstream vtkfilename;
 	
 	std::vector<int> print_points;
-	initPrintPointVector(print_points, num_time_steps, nprint, printIterations, print_points_file_name);
+	initPrintPointVector(print_points, num_time_steps, nprint, print_points_file_name);
 	
 	if(verbose)
 	{		
@@ -181,11 +183,11 @@ try
         transport_solver.solve(&porevol[0], &src[0], dt, state);
         //transport_solver.solveGravity(&porevol[0], dt, state);
         
-        if(printIterations && it != print_points.end() && *it <= i) //( (i % plotInterval) == 0 ) )
+        if(printIterations && it != print_points.end() && *it == i) //( (i % plotInterval) == 0 ) )
 		{
 			it++;
-			printIterationsFromVector(transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
-			printStateDataToVTKFile(vtkfilename, state, grid, solver_flag, solver_type, extra_solver_char, comp_length_days, time_step_days, i /*, plotInterval*/);
+			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
+			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_flag, solver_type, extra_solver_char, comp_length_days, time_step_days, *it /*i , plotInterval*/);
 		}
 		if(verbose)
 			std::cout << "* Solved step " << i+1 << " of " << num_time_steps << " *\n";
