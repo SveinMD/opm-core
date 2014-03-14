@@ -34,13 +34,13 @@ namespace Opm
 
 using std::string;
 
-void initPrintPointVector(std::vector<int> & print_points, int num_time_steps, int nprint, bool printIterations, string print_points_file_name);
-void printStateDataToVTKFile(std::ostringstream & vtkfilename, Opm::TwophaseState state, 
+void initPrintPointVector(std::vector<int> & print_points, int num_time_steps, int nprint, string print_points_file_name);
+void printStateDataToVTKFile(string execName, std::ostringstream & vtkfilename, Opm::TwophaseState state, 
 						 const UnstructuredGrid& grid, bool solver_flag, char solver_type, char extra_solver_char, 
 						 double comp_length_days, double time_step_days, int i /*, int plotInterval*/);
 void printStateDataToVTKFile(string vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid);						 
 string replaceStrChar(string str, const string & replace, char ch);
-void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & transport_solver, 
+void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, 
 							   int i, int num_cells, const char solver_type, 
 							   const double comp_length, const double time_step);
 void parseArguments(int argc, char ** argv, double & muw, double & muo, 

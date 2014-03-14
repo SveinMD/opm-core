@@ -178,13 +178,12 @@ double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & gr
 	}
 }
 
-void initPrintPointVector(std::vector<int> & print_points, int num_time_steps, int nprint, bool printIterations, string print_points_file_name)
+void initPrintPointVector(std::vector<int> & print_points, int num_time_steps, int nprint, string print_points_file_name)
 {
-	int plotInterval = floor(num_time_steps/nprint + 0.5);
+	int plotInterval = floor((double)num_time_steps/nprint + 0.5);
 	print_points.push_back(0);
 	std::vector<int> extra_print_points;
-	if(printIterations)
-		readPrintPointsFromFile(print_points_file_name,extra_print_points);
+	readPrintPointsFromFile(print_points_file_name, extra_print_points);
 	int last_interval_point = 0;
 	while(print_points.back() < num_time_steps)
 	{
@@ -201,6 +200,9 @@ void initPrintPointVector(std::vector<int> & print_points, int num_time_steps, i
 				print_points.push_back(last_interval_point);
 		}
 	}
+	for(std::vector<int>::iterator it = print_points.begin(); it != print_points.end(); it++)
+		std::cout << *it << " ";
+	std::cout << "\n";
 }
 bool readPrintPointsFromFile(std::string filename, std::vector<int> & print_points)
 {
@@ -237,10 +239,10 @@ bool readPrintPointsFromFile(std::string filename, std::vector<int> & print_poin
 	}
 }
 
- void printStateDataToVTKFile(std::ostringstream & vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid, bool solver_flag, char solver_type, char extra_solver_char, double comp_length_days, double time_step_days, int i /*, int plotInterval*/)
+ void printStateDataToVTKFile(string execName, std::ostringstream & vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid, bool solver_flag, char solver_type, char extra_solver_char, double comp_length_days, double time_step_days, int i /*, int plotInterval*/)
 {
 	vtkfilename.str("");
-	vtkfilename << "testCase4-s-" << solver_type;
+	vtkfilename << execName << "-s-" << solver_type;
 	if(solver_flag)
 		vtkfilename << extra_solver_char;
 	vtkfilename << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') <<  i << ".vtu"; //(int)(i/plotInterval) << ".vtu";
@@ -256,7 +258,7 @@ void printStateDataToVTKFile(std::string vtkfilename, Opm::TwophaseState state, 
 	Opm::writeVtkData(grid, dm, vtkfile);
 }
 
-void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & transport_solver, int i, int num_cells, const char solver_type, const double comp_length, const double time_step)
+void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, int i, int num_cells, const char solver_type, const double comp_length, const double time_step)
 {
 	std::vector<int> iterations = transport_solver.getReorderIterations();
 	std::ostringstream iterfilename;
@@ -266,7 +268,7 @@ void printIterationsFromVector(const Opm::TransportSolverTwophaseReorder & trans
 	
 	// Set filename and open
 	iterfilename.str(""); 
-	iterfilename << "testCase4-iterations-s-" << solver_type << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
+	iterfilename << execName << "-iterations-s-" << solver_type << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
 	std::ofstream file; file.open(iterfilename.str().c_str());
 	for ( int i = 0; i < num_cells; i++)
 	{
