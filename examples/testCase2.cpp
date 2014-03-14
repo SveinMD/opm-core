@@ -162,7 +162,8 @@ try
     std::ostringstream vtkfilename;
 	
 	std::vector<int> print_points;
-	initPrintPointVector(print_points, num_time_steps, nprint, print_points_file_name);
+	if(printIterations)
+		initPrintPointVector(print_points, num_time_steps, nprint, print_points_file_name);
 	
 	if(verbose)
 	{		

@@ -171,7 +171,6 @@ double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & gr
 		{
 			printIterations = true;
 			nprint = std::atoi(argv[++i]);
-			
 		}
 		else
 			std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
@@ -200,9 +199,9 @@ void initPrintPointVector(std::vector<int> & print_points, int num_time_steps, i
 				print_points.push_back(last_interval_point);
 		}
 	}
-	for(std::vector<int>::iterator it = print_points.begin(); it != print_points.end(); it++)
-		std::cout << *it << " ";
-	std::cout << "\n";
+	//for(std::vector<int>::iterator it = print_points.begin(); it != print_points.end(); it++)
+	//	std::cout << *it << " ";
+	//std::cout << "\n";
 }
 bool readPrintPointsFromFile(std::string filename, std::vector<int> & print_points)
 {
