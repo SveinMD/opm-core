@@ -172,6 +172,10 @@ try
 		std::cin.ignore(std::numeric_limits<std::streamsize> ::max(), '\n');
 	}		
 	
+	for(std::vector<int>::iterator iter = print_points.begin(); iter != print_points.end(); ++iter)
+		std::cout << *iter << " ";
+	std::cout << "\n";
+	
 	std::vector<int>::iterator it = print_points.begin();
 	time::StopWatch clock;
 	clock.start();
@@ -188,7 +192,7 @@ try
 		{
 			it++;
 			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
-			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_flag, solver_type, extra_solver_char, comp_length_days, time_step_days, *it /*i , plotInterval*/);
+			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_flag, solver_type, extra_solver_char, comp_length_days, time_step_days, i /*i , plotInterval*/);
 		}
 		if(verbose)
 			std::cout << "* Solved step " << i+1 << " of " << num_time_steps << " *\n";
