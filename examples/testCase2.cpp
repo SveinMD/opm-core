@@ -13,6 +13,7 @@
 #include <opm/core/pressure/FlowBCManager.hpp>
 #include <opm/core/props/IncompPropertiesBasic.hpp>
 #include <opm/core/props/IncompPropertiesShadow.hpp>
+#include <opm/core/props/IncompPropertiesInterface.hpp>
 
 #include <opm/core/transport/reorder/TransportSolverTwophaseReorder.hpp>
 
@@ -44,6 +45,7 @@ try
 	double xpos = 0; double ypos = 0;
 	double dxperm = 365.76; double dyperm = 670.56;
 	double dx = 10.0; double dy = 10.0; double dz = 10.0;
+	double perm_mD = 10;
 	double muw = 1; double muo = 1;
 	double time_step_days = 0.1;
 	double comp_length_days = 2;
@@ -56,6 +58,7 @@ try
 	bool verbose = false;
 	bool printIterations = false;
 	bool solver_flag = false;
+	bool is_inhom_perm = false;
 	
 	char solver_type = 'r';
 	
@@ -68,7 +71,7 @@ try
 	if(argc > 1)
 		parseArguments(argc, argv, muw, muo, verbose, solver_flag, time_step_days, comp_length_days, 
 					   dx, dy, nx, ny, solver_type, printIterations, nprint, 
-					   print_points_file_name, perm_file_name, layer, xpos, ypos,
+					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, is_inhom_perm,
 					   srcVol, sinkVol, grav_x, grav_y, grav_z);
 	
 	char extra_solver_char = '\0';
@@ -79,7 +82,8 @@ try
 		std::cout << "----------------- Initializing problem -------------------\n";
 	
 	std::vector<double> perm;
-	buildPermData(perm_file_name, perm, layer, xpos, ypos, dx, dy, nx, ny, 
+	if(is_inhom_perm)
+		buildPermData(perm_file_name, perm, layer, xpos, ypos, dx, dy, nx, ny, 
 				  dxperm, dyperm, nxperm, nyperm, verbose);
 	
     GridManager grid_manager(nx, ny, nz, dx, dy, dz);
@@ -94,9 +98,9 @@ try
     double visc_arr[] = {muw*centi*Poise, muo*centi*Poise};
     std::vector<double> viscosity(visc_arr, visc_arr + sizeof(visc_arr)/sizeof(double));
     double porosity = 0.5;
-    double permeability = 10.0*milli*darcy;
+    double permeability = perm_mD*milli*darcy;
     SaturationPropsBasic::RelPermFunc rel_perm_func = SaturationPropsBasic::Quadratic;
-
+    
     IncompPropertiesBasic props(num_phases, rel_perm_func, density, viscosity,
                                 porosity, permeability, grid.dimensions, num_cells);
     IncompPropertiesShadow shadow_props(props);
@@ -116,7 +120,13 @@ try
     FlowBCManager bcs;
 
     LinearSolverUmfpack linsolver;
-    IncompTpfa psolver(grid, shadow_props.usePermeability(&perm[0]), linsolver, grav, NULL, src, bcs.c_bcs());
+    //IncompTpfa psolver(grid, shadow_props.usePermeability(&perm[0]), linsolver, grav, NULL, src, bcs.c_bcs());
+    IncompPropertiesInterface * prop_pointer;
+    if(is_inhom_perm)
+		prop_pointer = (IncompPropertiesInterface *) &shadow_props.usePermeability(&perm[0]);
+    else
+		prop_pointer = (IncompPropertiesInterface *) &props;
+	IncompTpfa psolver(grid, *prop_pointer, linsolver, grav, NULL, src, bcs.c_bcs());
 	
     WellState well_state;
     
@@ -125,7 +135,8 @@ try
     
     const double tolerance = 1e-9;
     const int max_iterations = 30;
-    Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]), grav, tolerance, max_iterations, solver_type, verbose, solver_flag);
+    //Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]), grav, tolerance, max_iterations, solver_type, verbose, solver_flag);
+	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose, solver_flag);
 
     const double comp_length = comp_length_days*day;
     const double dt = time_step_days*day;
@@ -140,8 +151,9 @@ try
     for (int cell = 0; cell < num_cells; ++cell) {
         allcells[cell] = cell;
     }
-    state.setFirstSat(allcells, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
-    
+    //state.setFirstSat(allcells, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
+	state.setFirstSat(allcells, *prop_pointer, TwophaseState::MinSat);
+		
     /*unsigned int nxl = floor(nx*0.5);
     unsigned int nxr = nx - nxl;
     std::vector<int> lefthalf(nxr*ny);
@@ -171,10 +183,6 @@ try
 		std::cout << "Press ENTER to continue computation... " << std::flush;
 		std::cin.ignore(std::numeric_limits<std::streamsize> ::max(), '\n');
 	}		
-	
-	for(std::vector<int>::iterator iter = print_points.begin(); iter != print_points.end(); ++iter)
-		std::cout << *iter << " ";
-	std::cout << "\n";
 	
 	std::vector<int>::iterator it = print_points.begin();
 	time::StopWatch clock;
