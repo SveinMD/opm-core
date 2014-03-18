@@ -36,13 +36,12 @@ namespace Opm
 
 using std::string;
 
-void parseArguments(int argc, char ** argv, 
-double & muw, double & muo, bool & verbose, bool & solver_flag, 
-double & time_step_days, double & comp_length_days, double & xsize, 
-double & ysize, int & xdim, int & ydim, char & solver_type, 
-bool & printIterations, int & nprint, string & print_points_file_name,
-string & perm_file_name, int & layer, double & xpos, double & ypos, 
-double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z)
+void parseArguments(int argc, char ** argv, double & muw, double & muo, 
+					bool & verbose, bool & solver_flag, double & time_step_days, double & comp_length_days,
+					double & xsize, double & ysize, int & xdim, int & ydim, char & solver_type, 
+					bool & printIterations, int & nprint, string & print_points_file_name,
+					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
+					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
@@ -130,16 +129,24 @@ double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & gr
 		{
 			verbose = true;
 		}
-		else if(std::string(argv[i]) == "-f")
-		{
-			i++;
-			perm_file_name = std::string(argv[i]);
-		}
 		else if(std::string(argv[i]) == "--perm")
 		{
-			layer = atof(argv[++i]);
-			xpos = atof(argv[++i]);
-			ypos = atof(argv[++i]);
+			is_inhom_perm = std::string(argv[++i]) == "i";
+			if(is_inhom_perm)
+			{
+				layer = atof(argv[++i]);
+				xpos = atof(argv[++i]);
+				ypos = atof(argv[++i]);
+				if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
+					perm_file_name = std::string(argv[++i]);
+					
+				std::cout << "Using inhomogeneous permeability in layer " << layer << " at position (x,y) = (" << xpos << "," << ypos << ")\n";
+			}
+			else
+			{
+				perm = atof(argv[++i]);
+				std::cout << "Using homogeneous permeability " << perm << " mD\n";
+			}
 		}
 		else if(std::string(argv[i]) == "--dim")
 		{

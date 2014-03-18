@@ -47,7 +47,7 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 					bool & verbose, bool & solver_flag, double & time_step_days, double & comp_length_days,
 					double & xsize, double & ysize, int & xdim, int & ydim, char & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
-					string & perm_file_name, int & layer, double & xpos, double & ypos, 
+					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z);
 void constructCacheFileName(std::ostringstream & filename, int layer, 
 							double xstart, double xsize, int xnum, 
