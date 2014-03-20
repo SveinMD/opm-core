@@ -208,7 +208,7 @@ namespace Opm
         source_ = source;
         dt_ = dt;
         toWaterSat(state.saturation(), saturation_);
-
+		
 #ifdef EXPERIMENT_GAUSS_SEIDEL
         std::vector<int> seq(grid_.number_of_cells);
         std::vector<int> comp(grid_.number_of_cells + 1);
@@ -263,7 +263,6 @@ namespace Opm
             dinflux = 0.0;
             outflux = !src_is_inflow ? src_flux : 0.0;
             dtpv    = tm.dt_/tm.porevolume_[cell];
-
             // Compute fluxes over interior edges. Boundary flow is supposed to be
             // included in the transport source term, along with well sources.
             for (int i = tm.grid_.cell_facepos[cell]; i < tm.grid_.cell_facepos[cell+1]; ++i) {
@@ -288,22 +287,6 @@ namespace Opm
                     }
                 }
             }
-            
-            /*if(cell == 399)
-            {
-	            double xval;
-	            double xmin = 0; double xmax = 1;
-	            int n_points = 150;
-	            std::ofstream file;
-	            file.open("fractional_flow.txt");
-	            for ( int i = 0; i <= n_points; i++)
-	            {
-					xval = (xmax-xmin)/n_points*i;
-					file << xval << "\t" << tm.fracFlow(xval,cell) << "\t" << tm.fracFlowDerivative(xval,cell) << "\n";
-				}
-				file.close();
-			}*/
-
         }
         double operator()(double s) const
         {
@@ -330,7 +313,6 @@ namespace Opm
         //saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used); // Original. Commented 04.02.14 - Svein
         
 		double inflec = getInflectionPoint();
-        
         if(solver_type_ == 'n')
 			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
         else if(solver_type_ == 't')
@@ -449,6 +431,7 @@ namespace Opm
             OPM_THROW(std::runtime_error, "In solveMultiCell(), we did not converge after "
                   << num_iters << " iterations. Remaining update count = " << update_count);
         }
+        if(getVerbose())
         std::cout << "Solved " << num_cells << " cell multicell problem in "
                   << num_iters << " iterations." << std::endl;
 

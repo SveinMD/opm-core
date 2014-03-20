@@ -995,7 +995,6 @@ namespace Opm
             using namespace std;
             const double macheps = numeric_limits<double>::epsilon();
             const double eps = tolerance + macheps*max(max(fabs(a), fabs(b)), 1.0);
-
             double f_initial = f(initial_guess);
             const double epsF = tolerance + macheps*max(fabs(f_initial), 1.0);
             if (fabs(f_initial) < epsF) {
