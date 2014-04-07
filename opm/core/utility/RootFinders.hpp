@@ -255,11 +255,70 @@ namespace Opm
 			return solve(f,initial_guess,a,b,max_iter,tolerance,false,iterations_used);
 		}
 	};
+	
+	int sign(double a,double b) {
+		return (b >= 0.0 ? fabs(a) : -fabs(a));
+	}
 
 	template <class ErrorPolicy = ThrowOnError>
 	class Ridder //: public virtual BaseRootFinder
 	{
 		public:
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double x1, const double x2,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used,
+								   double dummy_variable)
+		{
+			double invalid_ans = -1;
+			int j;
+			double ans,fh,fl,fm,fnew,s,xh,xl,xm,xnew;
+			
+			fl = f(x1); fh = f(x2);
+			if( (fl > 0.0 && fh < 0.0) || (fl < 0.0 && fh > 0.0) ) {
+				xl = x1; xh = x2;
+				ans = invalid_ans;
+				for(j = 1; j <= max_iter; j++) {
+					xm = 0.5*(xl+xh);
+					fm = f(xm);
+					s = sqrt(fm*fm-fl*fh);
+					if(s == 0.0) return ans;
+					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s);
+					if (fabs(xnew-ans) <= tolerance) return ans;
+					ans = xnew;
+					fnew = f(ans);
+					if(fnew == 0.0) return ans;
+					if(sign(fm,fnew) != fm) {
+						xl = xm;  fl = fm;
+						xh = ans; fh = fnew;
+					}
+					else if(sign(fl,fnew) != fl) {
+						xh = ans; fh = fnew;
+					}
+					else if(sign(fh,fnew) != fh) {
+						xl = ans; fl = fnew;
+					}
+					else {
+						std::cerr << "Bracket violation. This should never happen!\n";
+					}
+					if(fabs(xh-xl) <= tolerance)
+						return ans;
+				}
+				return ErrorPolicy::handleTooManyIterationsNewton(xnew, max_iter, f(xnew));
+			}
+			else {
+				if(fl = 0.0) return x1;
+				if(fh = 0.0) return x2;
+				return ErrorPolicy::handleBracketingFailure(x1,x2,fl,fh);
+			}
+			return 0.0; // Unreachable
+		}
+		
 		
 		template <class Functor>
 		inline static double solve(const Functor& f,
@@ -288,7 +347,7 @@ namespace Opm
 				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
 			}
 			
-			if(verbose)
+			/*if(verbose)
 				std::cout << "----------------------- Ridder's Method iteration ---------------------------\n"
 						<< "Initial guess: " << initial_guess << "\n"
 						<< "Max iterations: " << max_iter << "\n"
@@ -296,42 +355,42 @@ namespace Opm
 						<< "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
             if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,x,f(x));
-			
+			*/
 			x = -10; // A saturation value always outside bracket
 			for(int i = 0; i < max_iter; i++)
 			{
 				++iterations_used;
 				double xc = 0.5*(xa+xb);
 				double fc = f(xc);
-				double s = sqrt(fc*fc-fa*fb);
-				if (s == 0)
+				double s = sqrt(fc*fc-fa*fb); // Consider approximation
+				if (s == 0.0)
 				{
-					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
 					return x;
 				}
-				double xnew = xc + (xc-xa)*((fa >= fb ? 1.0 : -1.0)*fc/s);
+				double xnew = xc + (xc-xa)*((fa >= fb ? 1.0 : -1.0)*fc/s); // Consider removing changing 1/s to a multiplication
 				if( std::abs(xnew-x) <= tolerance ) 
 				{
-					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
 					return x;
 				}
 				x = xnew;
 				fnew = f(x);
 				if( std::abs(fnew) <= tolerance )
 				{
-					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
 					return x;
 				}
-				if(fc*fnew < 0)
+				if(fc*fnew < 0.0)
 				{
 					xa = xc; fa = fc;
 					xb = x; fb = fnew;
 				}
-				else if(fa*fnew < 0)
+				else if(fa*fnew < 0.0)
 				{
 					xb = x; fb = fnew;
 				}
-				else if(fb*fnew < 0)
+				else if(fb*fnew < 0.0)
 				{
 					xa = x; fa = fnew;
 				}
@@ -350,11 +409,11 @@ namespace Opm
 				
 				if( std::abs(xb-xa) <= tolerance)
 				{
-					if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
 					return x;
 				}
 				
-				if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,x,f(x),f.ds(x));
+				//if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,x,f(x),f.ds(x));
 			}
 			
 			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
