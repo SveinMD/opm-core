@@ -14,12 +14,19 @@ muw = "1"
 muo = "1"
 sizex = "10"
 sizey = "10"
-ncellx = "20"
-ncelly = "20"
+nx = "20"
+ny = "20"
+posx = "0"
+posy = "0"
+srcVol = "0.2"
+layer = "0"
+perm = "10"
+inhom = True
 
 i = 1
 while(i < len(sys.argv)):
     arg = sys.argv[i]
+    #print(arg)
     if(arg == "-s"):
         i = i + 1
         solver = sys.argv[i]
@@ -42,8 +49,20 @@ while(i < len(sys.argv)):
 	i = i + 1
 	n_runs = int(sys.argv[i])
     elif(arg == "-p"):
-        i += 1
 	print_flag = True
+    elif(arg == "--perm"):
+	i += 1
+	inhom = sys.argv[i] == "i"
+        if(not inhom):
+	    i += 1
+	    perm = sys.argv[i]
+        else:
+	    i += 1
+	    layer = sys.argv[i]
+	    i += 1
+            posx = sys.argv[i]
+	    i += 1
+	    posy = sys.argv[i]
     elif(arg == "--dim"):
         i += 1
         sizex = sys.argv[i]
@@ -53,6 +72,9 @@ while(i < len(sys.argv)):
         ncellx = sys.argv[i]
         i += 1
         ncelly = sys.argv[i]
+    elif(arg == "-i"):
+        i += 1
+	srcVol = sys.argv[i]
     else:
         print("Warning: Invalid argument: " + sys.argv[i])
     i = i + 1
@@ -62,15 +84,26 @@ print("Runing " + path.basename(filename) + " " + str(n_runs) + " time(s) with s
 #v_dt = [0.1]
 v_dt = [10,25,50,75,100,150,200,250,300, 400, 500, 600, 700, 800, 900, 1000]
 
-arguments = [filename,"-s",solver,"-m",muw,muo,"-T",end_time,"-t"]
+arguments = [filename,"-s",solver,"--dim",sizex,sizey,nx,ny,"--perm","i",layer,posx,posy,"-i",srcVol,"-m",muw,muo,"-T",end_time,"-t"]
 extra_param = ""
 if(solver_flag):
     extra_param = "a"
     arguments.insert(3,extra_param)
 if(print_flag):
     arguments.insert(1,"-p")
-dataoutfilename = path.basename(filename)+"-cputvsdt-s-"+solver+extra_param+"-T-"+str(end_time)+"-m-"+muw+"-"+muo+"-dim-"+sizex+"-"+sizey+"-"+ncellx+"-"+ncelly+".data"
+perm_str = "perm-i-"+layer+"-"+posx+"-"+posy
+if(not inhom):
+    perm_str = "perm-h-"+perm
+    perm_ind = arguments.index("--perm")
+    del arguments[perm_ind+1:perm_ind+5]
+    arguments.insert(perm_ind+1,"h")
+    arguments.insert(perm_ind+2,perm)
+print arguments
+dataoutfilename = path.basename(filename)+"-cputvsdt-s-"+solver+extra_param+"-T-"+str(end_time)+"-m-"+muw+"-"+muo+"-dim-"+sizex+"-"+sizey+"-"+nx+"-"+ny+"-"+perm_str+"-i-"+srcVol
+dataoutfilename = dataoutfilename.replace(".","_")
+dataoutfilename = dataoutfilename+".data"
 dataoutfile = open(dataoutfilename,'w')
+dataoutfile.write("dt,\t cputime\n")
 for dt in v_dt:
     print("dt = " + str(dt) + ": ")
     arguments.append(str(dt))
@@ -85,6 +118,6 @@ for dt in v_dt:
         time = float(line.split()[3])
 	tot_time += time
     arguments.pop()
-    dataoutfile.write(str(dt) + "\t " + str(tot_time/n_runs) + "\n") 
+    dataoutfile.write(str(dt) + ",\t " + str(tot_time/n_runs) + "\n") 
     print(tot_time/n_runs)
 dataoutfile.close()
