@@ -38,6 +38,7 @@
 
 #include <opm/core/utility/ErrorMacros.hpp>
 #include <opm/core/utility/StopWatch.hpp>
+#include <opm/core/utility/CaseUtilities.hpp>
 
 #include <algorithm>
 #include <limits>
@@ -112,6 +113,43 @@ namespace Opm
 		}
     };
     
+    template <class Functor>
+class PrintFunctor
+{
+	public:
+	//template <class Functor> 
+	static void printFunctorValues(const Functor& f, int n, const char * filename)
+	{
+		double dx = 1.0/(n-1.0);
+		std::ofstream file; file.open(filename);
+		file << "x, \t y \n";
+		for (int i = 0; i < n; i++)
+		{
+			file << (double)dx*i << ", \t" << (double)f(dx*i) << "\n";
+		}
+		file.close();
+	}
+};
+    
+    double sign(double a,double b) {
+		return ( (b) >= 0.0 ? fabs(a) : -fabs(a) );
+	}
+	double newt(double guess, double s, int iter)
+	{
+		//std::cout << guess << "\n";
+		double prev_guess = guess;
+		guess = 2*guess/(guess*guess+s);
+		//std::cout << guess << "\n";
+		int i = 0;
+		while(i++ < iter && fabs(prev_guess - guess) > 10e-4)
+		{
+			prev_guess = guess;
+			guess = 0.5*guess*(3-s*guess*guess);
+			//std::cout << guess << "\n";
+		}
+		return guess;
+	}
+    
     /*class BaseRootFinder
     {
 		template <class Functor>
@@ -132,11 +170,106 @@ namespace Opm
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
+								   const double x1, const double x2,
+								   const int max_iter,
+								   const double tol,
+								   bool verbose,
+								   int & iterations_used)
+        {
+			double eps = 3.0e-8;
+			int iter;
+			double a=x1,b=x2,c=x2,d=a,e=a,min1,min2;
+			double fa=f(a),fb=f(b),fc,p,q,r,s,tol1,xm;
+			
+			if((fa > 0.0 && fb > 0.0) || (fa < 0.0 && fb < 0.0))
+				return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
+			
+			// Test:
+			//if(fabs(fa) <= tol)
+			//	return a;
+			//if(fabs(fb) <= tol)
+			//	return b;
+			
+			fc = fb;
+				
+			for(iter = 1; iter <= max_iter; iter++)
+			{
+				++iterations_used;
+				if( (fb > 0.0 && fc > 0.0) || (fb < 0.0 && fc < 0.0)) 
+				{
+					c = a; fc = fa;
+					e = d = b-a;
+				}
+				if( fabs(fc) < fabs(fb) ) 
+				{
+					a=b; 	b=c; 	c=a;
+					fa=fb; 	fb=fc; 	fc=fa;
+				}
+				tol1=2.0*eps*fabs(b)+0.5*tol;
+				//std::cout << tol1 << std::endl;
+				xm = 0.5*(c-b);
+				//if(fabs(xm) <= tol1 || fb == 0.0) return b;
+				if(fabs(xm) <= tol1 || fabs(fb) <= tol1) return b;
+				if(fabs(e) >= tol1 && fabs(fa) > fabs(fb)) 
+				{
+					s = fb/fa;
+					if(a == c)
+					{
+						p=2.0*xm*s; q = 1.0-s;
+					}
+					else
+					{
+						q = fa/fc;
+						r = fb/fc;
+						p = s*(2.0*xm*q*(q-r)-(b-a)*(r-1.0));
+						q=(q-1.0)*(r-1.0)*(s-1.0);
+					}
+					if(p > 0.0) q = -q;
+					p = fabs(p);
+					min1=3.0*xm*q-fabs(tol1*q);
+					min2=fabs(e*q);
+					if(2.0*p < (min1 < min2 ? min1 : min2)) 
+					{
+						e=d; d = p/q;
+					}
+					else
+					{
+						d=xm; e=d;
+					}
+				}
+				else
+				{
+					d=xm; e=d;
+				}
+				a=b; fa=fb;
+				if(fabs(d) > tol1)
+					b += d;
+				else
+					b += sign(tol1,xm);
+				fb = f(b);
+				if(fabs(fb) < tol1)
+					return b; // Test
+				
+				if(iter > 30)
+				{
+					std::string file_name = "functor_values.data";
+					PrintFunctor<Functor>::printFunctorValues(f,100,file_name.c_str());
+					return ErrorPolicy::handleTooManyIterationsNewton(b, max_iter, f(b));
+				}
+			}
+			
+			return ErrorPolicy::handleTooManyIterationsNewton(b, max_iter, f(b));
+		}
+		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
 								   const double a, const double b,
 								   const int max_iter,
 								   const double tolerance,
 								   bool verbose,
-								   int & iterations_used)
+								   int & iterations_used,
+								   bool dummy)
         {
 			double xa = a;    double xb = b;    double xc = xa; double xs = 1.0; double xd = 1.0;
 			double fa = f(a); double fb = f(b); double fc = fa; double fs = f(initial_guess);
@@ -255,10 +388,6 @@ namespace Opm
 			return solve(f,initial_guess,a,b,max_iter,tolerance,false,iterations_used);
 		}
 	};
-	
-	int sign(double a,double b) {
-		return (b >= 0.0 ? fabs(a) : -fabs(a));
-	}
 
 	template <class ErrorPolicy = ThrowOnError>
 	class Ridder //: public virtual BaseRootFinder
@@ -272,27 +401,29 @@ namespace Opm
 								   const int max_iter,
 								   const double tolerance,
 								   bool verbose,
-								   int& iterations_used,
-								   double dummy_variable)
+								   int& iterations_used//,
+								   //double dummy_variable
+								   )
 		{
 			double invalid_ans = -1;
 			int j;
-			double ans,fh,fl,fm,fnew,s,xh,xl,xm,xnew;
+			double ans,fh,fl,fm,fnew,s,xh,xl,xm,xnew=initial_guess;
 			
 			fl = f(x1); fh = f(x2);
 			if( (fl > 0.0 && fh < 0.0) || (fl < 0.0 && fh > 0.0) ) {
 				xl = x1; xh = x2;
 				ans = invalid_ans;
 				for(j = 1; j <= max_iter; j++) {
+					++iterations_used;
 					xm = 0.5*(xl+xh);
 					fm = f(xm);
-					s = sqrt(fm*fm-fl*fh);
-					if(s == 0.0) return ans;
-					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s);
+					s = sqrt(fm*fm-fl*fh); //newt(0.5,fm*fm-fl*fh,3); // Note: The iterative method returns the reciprocal root!
+					if(fabs(s) <= tolerance) return ans; // if(s == 0.0) return ans;
+					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s); // *s); //
 					if (fabs(xnew-ans) <= tolerance) return ans;
 					ans = xnew;
 					fnew = f(ans);
-					if(fnew == 0.0) return ans;
+					if(fabs(fnew) <= tolerance) return ans; // if(fnew == 0.0) return ans;
 					if(sign(fm,fnew) != fm) {
 						xl = xm;  fl = fm;
 						xh = ans; fh = fnew;
@@ -312,8 +443,8 @@ namespace Opm
 				return ErrorPolicy::handleTooManyIterationsNewton(xnew, max_iter, f(xnew));
 			}
 			else {
-				if(fl = 0.0) return x1;
-				if(fh = 0.0) return x2;
+				if(fabs(fl) <= tolerance) return x1; // if(fl == 0.0) return x1;
+				if(fabs(fh) <= tolerance) return x2; // if(fh == 0.0) return x2;
 				return ErrorPolicy::handleBracketingFailure(x1,x2,fl,fh);
 			}
 			return 0.0; // Unreachable
@@ -327,13 +458,17 @@ namespace Opm
 								   const int max_iter,
 								   const double tolerance,
 								   bool verbose,
-								   int& iterations_used)
+								   int& iterations_used,
+								   bool dummy
+								   )
 		{
+			double s = 0.0;
 			double x = initial_guess;
 			double xa = a;
 			double xb = b;
 			double fa = f(xa); double fb = f(xb);
 			double fnew = f(x);
+			double xnew,xc,fc;
 			
 			if(fnew*fa < 0)
 				xb = x;
@@ -360,15 +495,17 @@ namespace Opm
 			for(int i = 0; i < max_iter; i++)
 			{
 				++iterations_used;
-				double xc = 0.5*(xa+xb);
-				double fc = f(xc);
-				double s = sqrt(fc*fc-fa*fb); // Consider approximation
+				xc = 0.5*(xa+xb);
+				fc = f(xc);
+				s = sqrt(fc*fc-fa*fb); // newt(2.4,fc*fc-fa*fb,6); //
+				//std::cout << "Root: " << s << ", " << sqrt(fc*fc-fa*fb) << /*"," << f(0) << "," << f(1) << "," << f(xc)  << */ "\n"; // Note: The iterative method returns the reciprocal root!
+				//return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
 				if (s == 0.0)
 				{
 					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
 					return x;
 				}
-				double xnew = xc + (xc-xa)*((fa >= fb ? 1.0 : -1.0)*fc/s); // Consider removing changing 1/s to a multiplication
+				xnew = xc + (xc-xa)*((fa >= fb ? 1.0 : -1.0)*fc/s); // *s); // Consider changing 1/s to a multiplication
 				if( std::abs(xnew-x) <= tolerance ) 
 				{
 					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
