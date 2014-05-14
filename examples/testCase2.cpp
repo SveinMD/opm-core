@@ -70,7 +70,7 @@ try
 	
 	if(argc > 1)
 		parseArguments(argc, argv, muw, muo, verbose, solver_flag, time_step_days, comp_length_days, 
-					   dx, dy, nx, ny, solver_type, printIterations, nprint, 
+					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, is_inhom_perm,
 					   srcVol, sinkVol, grav_x, grav_y, grav_z);
 	
@@ -134,7 +134,7 @@ try
     Opm::computePorevolume(grid, props.porosity(), porevol);
     
     const double tolerance = 1e-9;
-    const int max_iterations = 30;
+    const int max_iterations = 50;
     //Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]), grav, tolerance, max_iterations, solver_type, verbose, solver_flag);
 	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose, solver_flag);
 
@@ -151,9 +151,24 @@ try
     for (int cell = 0; cell < num_cells; ++cell) {
         allcells[cell] = cell;
     }
-    //state.setFirstSat(allcells, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
+    // Old: state.setFirstSat(allcells, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
 	state.setFirstSat(allcells, *prop_pointer, TwophaseState::MinSat);
 		
+	unsigned int nzt = floor(nz*0.5);
+    unsigned int nzb = nz - nzt;
+    std::vector<int> tophalf(nzt*nx);
+    for(unsigned int cell = 0; cell < nzt*nx; ++cell)
+    {
+		tophalf[cell] = cell;
+	}
+    std::vector<int> bottomhalf(nzb*nx);
+	for(unsigned int cell = 0; cell < nzb*nx; cell++)
+	{
+		bottomhalf[cell] = nzt*nx + cell;
+	}
+	state.setFirstSat(tophalf, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
+	state.setFirstSat(bottomhalf, shadow_props.usePermeability(&perm[0]), TwophaseState::MaxSat);	
+		std::cout << "Init. sat done" << std::endl;
     /*unsigned int nxl = floor(nx*0.5);
     unsigned int nxr = nx - nxl;
     std::vector<int> lefthalf(nxr*ny);
@@ -189,12 +204,18 @@ try
 	clock.start();
     for (int i = 0; i < num_time_steps; ++i) {
 		if(verbose)
+			std::cout << "*** Solving step " << i+1 << " of " << num_time_steps << " ***\n";
+		if(verbose)
 			std::cout << "Solving pressure system ...\n";
         psolver.solve(dt, state, well_state);
         if(verbose)
 			std::cout << "Solving transport system:\n";
         transport_solver.solve(&porevol[0], &src[0], dt, state);
+        if(verbose)
+			std::cout << "Solving gravity transport system:\n";
         //transport_solver.solveGravity(&porevol[0], dt, state);
+        
+        //return 0;
         
         if(printIterations && it != print_points.end() && *it == i) //( (i % plotInterval) == 0 ) )
 		{
@@ -202,8 +223,6 @@ try
 			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
 			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_flag, solver_type, extra_solver_char, comp_length_days, time_step_days, i /*i , plotInterval*/);
 		}
-		if(verbose)
-			std::cout << "* Solved step " << i+1 << " of " << num_time_steps << " *\n";
     }
     clock.stop();
     std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";

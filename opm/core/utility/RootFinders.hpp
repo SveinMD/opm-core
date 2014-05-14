@@ -46,6 +46,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <utility>
 
 namespace Opm
 {
@@ -131,6 +132,11 @@ class PrintFunctor
 	}
 };
     
+    void addPointToVector(double x, double y, std::vector<std::pair<double,double>> & vec)
+    {
+		std::pair<double,double> thepair(x,y);
+		vec.push_back(thepair);
+	}
     double sign(double a,double b) {
 		return ( (b) >= 0.0 ? fabs(a) : -fabs(a) );
 	}
@@ -174,7 +180,9 @@ class PrintFunctor
 								   const int max_iter,
 								   const double tol,
 								   bool verbose,
-								   int & iterations_used)
+								   int & iterations_used, 
+								   bool isTestRun, 
+								   std::vector<std::pair<double,double>> & solution_path)
         {
 			double eps = 3.0e-8;
 			int iter;
@@ -184,14 +192,11 @@ class PrintFunctor
 			if((fa > 0.0 && fb > 0.0) || (fa < 0.0 && fb < 0.0))
 				return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
 			
-			// Test:
-			//if(fabs(fa) <= tol)
-			//	return a;
-			//if(fabs(fb) <= tol)
-			//	return b;
-			
 			fc = fb;
-				
+			
+			if(isTestRun)	
+				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
+			
 			for(iter = 1; iter <= max_iter; iter++)
 			{
 				++iterations_used;
@@ -247,18 +252,18 @@ class PrintFunctor
 				else
 					b += sign(tol1,xm);
 				fb = f(b);
-				if(fabs(fb) < tol1)
-					return b; // Test
+				if(isTestRun)
+					addPointToVector(b,fb,solution_path); // REMOVE FOR SPEED TESTS
 				
-				if(iter > 30)
+				/*if(iter > 30)
 				{
 					std::string file_name = "functor_values.data";
 					PrintFunctor<Functor>::printFunctorValues(f,100,file_name.c_str());
 					return ErrorPolicy::handleTooManyIterationsNewton(b, max_iter, f(b));
-				}
+				}*/
 			}
 			
-			return ErrorPolicy::handleTooManyIterationsNewton(b, max_iter, f(b));
+			return ErrorPolicy::handleTooManyIterationsNewton(a,b,max_iter);
 		}
 		
 		template <class Functor>
@@ -397,20 +402,38 @@ class PrintFunctor
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
-								   const double x1, const double x2,
+								   double x1, double x2,
 								   const int max_iter,
 								   const double tolerance,
 								   bool verbose,
 								   int& iterations_used//,
 								   //double dummy_variable
-								   )
+								   , bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
 		{
 			double invalid_ans = -1;
 			int j;
-			double ans,fh,fl,fm,fnew,s,xh,xl,xm,xnew=initial_guess;
+			double ans,fh,fl,fm,fnew,s,xh,xl,xm,xnew=initial_guess,f_init=f(initial_guess);
 			
-			fl = f(x1); fh = f(x2);
-			if( (fl > 0.0 && fh < 0.0) || (fl < 0.0 && fh > 0.0) ) {
+			if(isTestRun)
+				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
+			
+			fh = f(x2);
+			if(fh*f_init < 0)
+			{
+				fl = f_init;
+				x1 = initial_guess;
+			}
+			else
+			{
+				fl = f(x1);
+				if(fl*f_init < 0)
+				{
+					fh = f_init;
+					x2 = initial_guess;
+				}
+			}
+			
+			if( fl*fh < 0.0 ) {
 				xl = x1; xh = x2;
 				ans = invalid_ans;
 				for(j = 1; j <= max_iter; j++) {
@@ -418,9 +441,11 @@ class PrintFunctor
 					xm = 0.5*(xl+xh);
 					fm = f(xm);
 					s = sqrt(fm*fm-fl*fh); //newt(0.5,fm*fm-fl*fh,3); // Note: The iterative method returns the reciprocal root!
-					if(fabs(s) <= tolerance) return ans; // if(s == 0.0) return ans;
+					if(s == 0.0) return ans; //if(s == 0.0) return ans; // if(fabs(s) <= tolerance) return ans; // 
 					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s); // *s); //
-					if (fabs(xnew-ans) <= tolerance) return ans;
+					if(isTestRun)
+						addPointToVector(xnew,f(xnew),solution_path); // REMOVE FOR SPEED TESTS
+					if (fabs(xnew-ans) <= tolerance) return xnew;
 					ans = xnew;
 					fnew = f(ans);
 					if(fabs(fnew) <= tolerance) return ans; // if(fnew == 0.0) return ans;
@@ -435,7 +460,7 @@ class PrintFunctor
 						xl = ans; fl = fnew;
 					}
 					else {
-						std::cerr << "Bracket violation. This should never happen!\n";
+						ErrorPolicy::handleBracketingFailure(xl,xh,fl,fh);
 					}
 					if(fabs(xh-xl) <= tolerance)
 						return ans;
@@ -443,7 +468,11 @@ class PrintFunctor
 				return ErrorPolicy::handleTooManyIterationsNewton(xnew, max_iter, f(xnew));
 			}
 			else {
+				if(isTestRun)
+					addPointToVector(x1,f(x1),solution_path); // REMOVE FOR SPEED TESTS
 				if(fabs(fl) <= tolerance) return x1; // if(fl == 0.0) return x1;
+				if(isTestRun)
+					addPointToVector(x2,f(x2),solution_path); // REMOVE FOR SPEED TESTS
 				if(fabs(fh) <= tolerance) return x2; // if(fh == 0.0) return x2;
 				return ErrorPolicy::handleBracketingFailure(x1,x2,fl,fh);
 			}
@@ -532,7 +561,7 @@ class PrintFunctor
 					xa = x; fa = fnew;
 				}
 				else
-					std::cerr << "Bracket violation. This should never happen!\n";
+					ErrorPolicy::handleBracketingFailure(xa,xb,fc,fnew);
 					
 				if(xb < xa)
 				{
@@ -820,11 +849,11 @@ class PrintFunctor
 								   const int max_iter,
 								   const double tolerance,
 								   const bool verbose,
-								   int& iterations_used)
+								   int& iterations_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
         {
-            double x = initial_guess;
+            double x = initial_guess + 1 + 2*tolerance;
             double xNew = initial_guess;
-            
+            double fx = f(xNew);
             //double d2fw_inflec = visc_ratio*(2*inflec+1)*(inflec-1)*(inflec-1)+inflec*inflec*(2*inflec-3);
             //std::cout << "d2fw_inflec: " << d2fw_inflec << "\n";
             
@@ -837,66 +866,57 @@ class PrintFunctor
                       //<< "Func. val. at inflec: " << d2fw_inflec << "\n"
                       << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
-            if(verbose)
+            /*if(verbose)
             {
 				std::cout << "Viscosity ratio: " << visc_ratio << "\n";
-            double thePoint = 0.4;
-            std::string line;
-            std::ifstream infile("pointdata.txt");
-            if(infile.is_open())
-            {
-				if( getline(infile,line) )
-					thePoint = atof(line.c_str());
-				infile.close();
-			}
-			double xval;
-            double xmin = 0; double xmax = 1;
-            int n_points = 150;
-            std::ofstream file;
-            file.open("cell_residual.txt");
-            for ( int i = 0; i <= n_points; i++)
-            {
-				xval = (xmax-xmin)/n_points*i;
-				file << xval << "\t" << f(xval) << "\t" << f.ds(xval) << "\t" << fw(xval,visc_ratio) << "\t" << dfw2(xval,visc_ratio) << "\t" << f(thePoint) + f.ds(thePoint)*(xval-thePoint) << "\n";
-			}
-			file.close();
-			}
+	            double thePoint = 0.4;
+	            std::string line;
+	            std::ifstream infile("pointdata.txt");
+	            if(infile.is_open())
+	            {
+					if( getline(infile,line) )
+						thePoint = atof(line.c_str());
+					infile.close();
+				}
+				double xval;
+	            double xmin = 0; double xmax = 1;
+	            int n_points = 150;
+	            std::ofstream file;
+	            file.open("cell_residual.txt");
+	            for ( int i = 0; i <= n_points; i++)
+	            {
+					xval = (xmax-xmin)/n_points*i;
+					file << xval << "\t" << f(xval) << "\t" << f.ds(xval) << "\t" << fw(xval,visc_ratio) << "\t" << dfw2(xval,visc_ratio) << "\t" << f(thePoint) + f.ds(thePoint)*(xval-thePoint) << "\n";
+				}
+				file.close();
+			}*/
             
-            //double dfw2x = dfw2(x,visc_ratio);
-            //double dfw2xNew = 0;
-            while (std::abs(f(x)) > tolerance)
+            if(isTestRun)
+				addPointToVector(xNew,fx,solution_path); // REMOVE FOR SPEED TESTS
+            
+            while (fabs(fx) > tolerance && fabs(x-xNew) > tolerance)
             {
 				++iterations_used;
+				x = xNew;
 				if (iterations_used > max_iter)
                     return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
                 
-				// Scalar Newton's method
-				xNew = x - f(x)/f.ds(x);
-				
-				// Restrict to interval [0,1]
-				xNew = std::max(std::min(xNew,1.0),0.0);
-				
-				/*dfw2xNew = dfw2(xNew,visc_ratio);
-				if(dfw2xNew*dfw2x < 0.0)
-				{
-					xNew = (xNew+x)*0.5;
-					dfw2x = (dfw2xNew+dfw2x)*0.5;
-				}
-				else
-					dfw2x = dfw2xNew;*/
-					
-				if( (inflec-xNew)*(inflec-x) < 0 )
+				xNew = x - fx/f.ds(x); // Scalar Newton method
+				xNew = std::max(std::min(xNew,1.0),0.0); // Restrict to interval [0,1]
+				if( (inflec-xNew)*(inflec-x) < 0 ) // Trust Region
 					xNew = inflec;
 				
 				if (verbose)
 					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(xNew),f.ds(xNew));
 				
-				x = xNew;
+				fx = f(xNew);
+				if(isTestRun)
+					addPointToVector(xNew,fx,solution_path); // REMOVE FOR SPEED TESTS
 			}
 			if(verbose)
 				std::cout << "---------------------- End Newton iteration ------------------------\n";
 			
-            return x;
+            return xNew;
 		}
 		
 		// Darcy flow trust region solver
@@ -908,10 +928,14 @@ class PrintFunctor
 								   const int max_iter,
 								   const double tolerance,
 								   const bool verbose,
-								   int& iterations_used)
+								   int& iterations_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
         {
-            double x = initial_guess;
+            double x = initial_guess + 1 + 2*tolerance;
             double xNew = initial_guess;
+            double fx = f(xNew);
+            
+            if(isTestRun)
+				addPointToVector(xNew,fx,solution_path); // REMOVE WHEN TESTING SPEED
             
             /*double thePoint = 0.4;
             std::string line;
@@ -941,14 +965,15 @@ class PrintFunctor
                       << "Error tolerance: " << tolerance << "\n"
                       << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
-            while (std::abs(f(x)) > tolerance)
+            while (std::abs(fx) > tolerance && fabs(x-xNew) > tolerance)
             {
 				++iterations_used;
+				x = xNew;
 				if (iterations_used > max_iter)
                     return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
                 
 				// Scalar Newton's method
-				xNew = x - f(x)/f.ds(x);
+				xNew = x - fx/f.ds(x);
 				
 				// Restrict to interval [0,1]
 				xNew = std::max(std::min(xNew,1.0),0.0);
@@ -960,10 +985,13 @@ class PrintFunctor
 				if (verbose)
 					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
 				
-				x = xNew;
+				fx = f(xNew);
+				if(isTestRun)
+					addPointToVector(xNew,fx,solution_path); // REMOVE WHEN TESTING SPEED
 			}
 			if(verbose)
 				std::cout << "---------------------- End Newton iteration ------------------------\n";
+			
 			
             return x;
 		}
@@ -1186,6 +1214,112 @@ class PrintFunctor
                                    const double b,
                                    const int max_iter,
                                    const double tolerance,
+                                   int& iterations_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
+        {
+			
+			if(isTestRun)
+				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
+            using namespace std;
+            const double macheps = numeric_limits<double>::epsilon();
+            const double eps = tolerance + macheps*max(max(fabs(a), fabs(b)), 1.0);
+            double f_initial = f(initial_guess);
+            const double epsF = tolerance + macheps*max(fabs(f_initial), 1.0);
+            if (fabs(f_initial) < epsF) {
+				if(isTestRun)
+					addPointToVector(initial_guess,f_initial,solution_path); // REMOVE FOR SPEED TESTS
+                return initial_guess;
+            }
+            double x0 = a;
+            double x1 = b;
+            double f0 = f_initial;
+            double f1 = f_initial;
+            if (x0 != initial_guess) {
+                f0 = f(x0);
+                if (fabs(f0) < epsF) {
+					if(isTestRun)
+						addPointToVector(x0,f0,solution_path); // REMOVE FOR SPEED TESTS
+                    return x0;
+                }
+            }
+            if (x1 != initial_guess) {
+                f1 = f(x1);
+                if (fabs(f1) < epsF) {
+					if(isTestRun)
+						addPointToVector(x1,f1,solution_path); // REMOVE FOR SPEED TESTS
+                    return x1;
+                }
+            }
+            if (f0*f_initial < 0.0) {
+                x1 = initial_guess;
+                f1 = f_initial;
+            } else {
+                x0 = initial_guess;
+                f0 = f_initial;
+            }
+            if (f0*f1 > 0.0) {
+                return ErrorPolicy::handleBracketingFailure(a, b, f0, f1);
+            }
+            iterations_used = 0;
+            // In every iteraton, x1 is the last point computed,
+            // and x0 is the last point computed that makes it a bracket.
+            while (fabs(x1 - x0) >= 1e-9*eps) {
+                double xnew = regulaFalsiStep(x0, x1, f0, f1);
+                double fnew = f(xnew);
+                if(isTestRun)
+					addPointToVector(xnew,fnew,solution_path); // REMOVE FOR SPEED TESTS
+// 		cout << "xnew = " << xnew << "    fnew = " << fnew << endl;
+                ++iterations_used;
+                if (iterations_used > max_iter) {
+                    return ErrorPolicy::handleTooManyIterations(x0, x1, max_iter);
+                }
+                if (fabs(fnew) < epsF) {
+                    return xnew;
+                }
+                // Now we must check which point we must replace.
+                if ((fnew > 0.0) == (f0 > 0.0)) {
+                    // We must replace x0.
+                    x0 = x1;
+                    f0 = f1;
+                } else {
+                    // We must replace x1, this is the case where
+                    // the modification to regula falsi kicks in,
+                    // by modifying f0.
+                    // 1. The classic Illinois method
+//      const double gamma = 0.5;
+                    // @afr: The next two methods do not work??!!?
+                    // 2. The method called 'Method 3' in the paper.
+// 		    const double phi0 = f1/f0;
+// 		    const double phi1 = fnew/f1;
+// 		    const double gamma = 1.0 - phi1/(1.0 - phi0);
+                    // 3. The method called 'Method 4' in the paper.
+// 		    const double phi0 = f1/f0;
+// 		    const double phi1 = fnew/f1;
+// 		    const double gamma = 1.0 - phi0 - phi1;
+// 		    cout << "phi0 = " << phi0 <<" phi1 = " << phi1 <<
+// 		    " gamma = " << gamma << endl;
+                    // 4. The 'Pegasus' method
+                    const double gamma = f1/(f1 + fnew);
+                    f0 *= gamma;
+                }
+                x1 = xnew;
+                f1 = fnew;
+            }
+            return 0.5*(x0 + x1);
+        }
+
+		/// Implements a modified regula falsi method as described in
+        /// "Improved algorithms of Illinois-type for the numerical
+        /// solution of nonlinear equations"
+        /// by J. A. Ford.
+        /// Current variant is the 'Pegasus' method.
+        /// This version takes an extra parameter for the initial guess.
+        template <class Functor>
+        inline static double solve(const Functor& f,
+                                   const double initial_guess,
+                                   const double a,
+                                   const double b,
+                                   const int max_iter,
+                                   const double tolerance,
                                    int& iterations_used)
         {
             using namespace std;
@@ -1267,7 +1401,6 @@ class PrintFunctor
             }
             return 0.5*(x0 + x1);
         }
-
 
     private:
         inline static double regulaFalsiStep(const double a,
