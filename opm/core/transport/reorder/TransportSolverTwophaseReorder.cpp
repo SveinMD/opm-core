@@ -27,6 +27,10 @@
 #include <opm/core/utility/miscUtilities.hpp>
 #include <opm/core/pressure/tpfa/trans_tpfa.h>
 
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/lexical_cast.hpp>
+
 #include <iostream>
 #include <fstream>
 #include <iterator>
@@ -42,7 +46,6 @@
 
 namespace Opm
 {
-
     // Choose error policy for scalar solves here.
     typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
     //typedef NewtonRaphson<WarnAndContinueOnError> RootFinder;
@@ -290,6 +293,7 @@ namespace Opm
         }
         double operator()(double s) const
         {
+			//std::cout << s << " " << s0 << " " << tm.dt_ << " " << dtpv << " " << outflux << " " << influx << "\n";
             return s - s0 + dtpv*(outflux*tm.fracFlow(s, cell) + influx);
         }
         double ds(double s) const
@@ -299,6 +303,17 @@ namespace Opm
 		}
     };
 
+	struct TransportSolverTwophaseReorder::ResidualParameters
+	{
+		//ResidualParameters(double dtpv,double in,double out,double s0) : dtpv_(dtpv), in_(in), out_(out), s0_(s0) {};
+		ResidualParameters(std::vector<double> values) : dtpv_(values[0]), in_(values[1]), out_(values[2]), s0_(values[3]) {
+			//std::cout << values[0] << " " << values[1] << " " << values[2] << " " << values[3] << "\n";
+ 		};
+		double dtpv_;
+		double in_;
+		double out_;
+		double s0_;
+	};
 
     void TransportSolverTwophaseReorder::solveSingleCell(const int cell)
     {
@@ -312,57 +327,175 @@ namespace Opm
         
         //saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used); // Original. Commented 04.02.14 - Svein
         
-		double inflec = getInflectionPoint();
-        if(solver_type_ == 'n')
-			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
-        else if(solver_type_ == 't')
-        {
-			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
-			if(!solver_flag_)
+        /*std::ofstream file; file.open("flux_values.dat",std::ios::app);
+		file << cell << " \t" << res.influx << " \t" << res.outflux << " \t" << res.dtpv << "\n";
+		file.close();*/
+		
+		bool generateResidualValues = false;
+		if(generateResidualValues)
+		{
+			std::vector<double> saturations;
+			std::ifstream init_sat_file("init_sat.data");
+			string line;
+			if(init_sat_file.is_open())
+				while(getline(init_sat_file,line))
+				{
+					boost::trim(line);
+					if(!line.empty() && !boost::starts_with(line,"//"))
+						saturations.push_back(atof(line.c_str()));
+					//std::cout << atof(line.c_str()) << ", " << line << "\n";
+				}
+			init_sat_file.close();
+			
+			double dtmax = 500000;
+			int ndt = 30;
+			int ns = 30;
+			
+			double ddt = dtmax/(double)ndt;
+			double porvol = this->dt_/res.dtpv;
+			res.outflux = 0.3;
+			
+			for(unsigned int s = 0; s < saturations.size(); s++)
 			{
-				if(getVerbose())
-					std::cout << "Using precise Newton Raphson Trust Region method in cell " << cell << "\n";
-				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solve(res, saturation_[cell], M, inflec, maxit_, tol_, getVerbose(), iters_used);
+				res.s0 = saturations[s];
+				std::ostringstream filename;
+				filename << "one_cell_residual-s-" << replaceDot(saturations[s]) << ".data";
+				std::ofstream residual_file(filename.str().c_str());
+				residual_file.precision(15);
+				residual_file << "dt, snp, Rnp\n";
+				for(int i = 0; i < ns; i++)
+				{
+					double sat = (double)i/(ns-1);
+					for(int j = 0; j < ndt; j++)
+					{
+						this->setdt(j*ddt);
+						res.dtpv = j*ddt/porvol;
+						residual_file << j*ddt << ", " << sat << ", " << res(sat) << "\n";
+					}
+					residual_file << "\n";
+				}
+				residual_file.close();
+			}
+			
+			OPM_THROW(std::runtime_error, "Abort due to testing\n");
+		}
+		
+		std::vector<std::pair<double,double>> solutionPath;
+		bool testChamber = false;
+		if(testChamber)
+		{
+			std::vector<ResidualParameters> parameters;
+			std::ifstream param_file("frac_flow_params.dat");
+			string line;
+			if(param_file.is_open())
+			{
+				while( getline(param_file,line) )
+				{
+					boost::trim(line);
+					if(!line.empty() && !boost::starts_with(line,"//"))
+					{
+						std::vector<double> values;
+						std::vector<string> numbers_str;
+						boost::split(numbers_str,line,boost::is_any_of("\t "));
+						for(unsigned int i = 0; i < numbers_str.size() ; i++)
+						{
+							boost::trim(numbers_str[i]);
+							if(!numbers_str[i].empty())
+							{
+								double num = atof(numbers_str[i].c_str());
+								values.push_back(num);
+							}
+						}
+						parameters.push_back(ResidualParameters(values));
+					}
+				}
+				param_file.close();
 			}
 			else
-			{
-				if(getVerbose())
-					std::cout << "Using approximate Newton Raphson Trust Region method in cell " << cell << "\n";
-				/*if(cell == 25)
-				{
-					std::cout << "Using approximate Newton Raphson Trust Region method in cell " << cell << "\n";
-					saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, saturation_[cell], M, maxit_, tol_, true, iters_used);
-				}
-				else*/
-				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, saturation_[cell], M, maxit_, tol_, getVerbose(), iters_used);
-			}
-		}
-		else if(solver_type_ == 'u')
-        {
-			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
-			saturation_[cell] = RegulaFalsiTrustRegion<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, M, maxit_, tol_, getVerbose(), iters_used);
-		}
-		else if(solver_type_ == 'i')
-		{
-			saturation_[cell] = Ridder<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
-		}
-		else if(solver_type_ == 'b')
-		{
-			saturation_[cell] = Brent<ThrowOnError>::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
-		}
-        else
-			saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used);
+				std::cout << "Failed to open parameter file case_parameters.data \n";
 			
-		/*if(iters_used == 0)
-			std::cout << "No iterations used?! f(s):" << res(saturation_[cell]) << std::endl;
-        else
-			std::cout << "Iterations: " << iters_used << std::endl;*/
+			if(parameters.size() > 0)
+			{
+				for(unsigned int i = 0; i < parameters.size(); i++)
+				{
+					ResidualParameters param = parameters[i];
+					res.dtpv = param.dtpv_;
+					res.influx = param.in_;
+					res.outflux = param.out_;
+					res.s0 = param.s0_;
+					double M = visc_[0]/visc_[1];
+					
+					solutionPath.clear();
+					iters_used = 0;
+					selectSolverAndSolve(cell,param.s0_,res,iters_used,true,solutionPath);
+					
+					std::ostringstream filename;
+					constructFileNameFromParams(filename,solver_flag_ ? 'a' : solver_type_,M,res.dtpv,res.influx,res.outflux,param.s0_);
+					std::ofstream file; file.open(filename.str().c_str());
+					file.precision(20);
+					//file << "Iterations: " << iters_used << "\n";
+					file << "iter,\t x,\t y\n"; 
+					for(unsigned int j = 0; j < solutionPath.size(); j++)
+					{
+						double temp = fabs(std::get<1>(solutionPath[j]));
+						file << j << ",\t" << std::get<0>(solutionPath[j]) << ",\t " << (temp == 0 ? 1e-16 : temp) << "\n";
+					}
+					file.close();
+				}
+			}
+			//OPM_THROW(std::runtime_error, "Abort due to testing\n");
+		}
+        
+        selectSolverAndSolve(cell,saturation_[cell],res,iters_used,false,solutionPath);
         
         // add if it is iteration on an out loop
         reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
         fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
     }
+    
+    void TransportSolverTwophaseReorder::selectSolverAndSolve(const int cell, double s0, TransportSolverTwophaseReorder::Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
+    {
+		if(solver_type_ == 'n')
+			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used);
+        else if(solver_type_ == 't')
+        {
+			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
+			if(!solver_flag_)
+			{
+				double inflec = getInflectionPoint();
+				if(getVerbose())
+					std::cout << "Using precise Newton Raphson Trust Region method in cell " << cell << "\n";
+				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solve(res, s0, M, inflec, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+			}
+			else
+			{
+				if(getVerbose())
+					std::cout << "Using approximate Newton Raphson Trust Region method in cell " << cell << "\n";
+				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, s0, M, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+			}
+		}
+		else if(solver_type_ == 'u')
+        {
+			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
+			saturation_[cell] = RegulaFalsiTrustRegion<ThrowOnError>::solve(res, s0, 0.0, 1.0, M, maxit_, tol_, getVerbose(), iters_used);
+		}
+		else if(solver_type_ == 'i')
+		{
+			saturation_[cell] = Ridder<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+		}
+		else if(solver_type_ == 'b')
+		{
+			saturation_[cell] = Brent<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+		}
+        else
+			saturation_[cell] = RootFinder::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used,isTestRun,solution_path);
+	}
+    
+    void TransportSolverTwophaseReorder::constructFileNameFromParams(std::ostringstream & filename, char solver_type, double M, double dtpv, double in, double out, double s0)
+	{
+		filename << "convergence-s-" << solver_type << "-M-" << replaceDot(M) << "-dtpv-" << replaceDot(dtpv) << "-in-" << replaceDot(in) << "-out-" << replaceDot(out) << "-s0-" << replaceDot(s0) << ".data";
+	}
 
     void TransportSolverTwophaseReorder::solveMultiCell(const int num_cells, const int* cells)
     {
@@ -809,7 +942,6 @@ namespace Opm
             }
             s0      = tm.saturation_[cell];
             dtpv    = tm.dt_/tm.porevolume_[cell];
-
         }
         double operator()(double s) const
         {
@@ -899,6 +1031,7 @@ namespace Opm
                 }
             }
             gravflux_[f] *= delta_rho*gdz;
+            //std::cout << gravflux_[f] << " ";
         }
     }
 
@@ -1004,6 +1137,9 @@ namespace Opm
         int num_iters = 0;
         for (std::vector<std::vector<int> >::size_type i = 0; i < columns_.size(); i++) {
             // std::cout << "==== new column" << std::endl;
+            //for(unsigned int ii = 0; ii < columns_[i].size(); ii++)
+			//	std::cout << (columns_[i])[ii] << " ";
+			//std::cout << std::endl;
             num_iters += solveGravityColumn(columns_[i]);
         }
         std::cout << "Gauss-Seidel column solver average iterations: "

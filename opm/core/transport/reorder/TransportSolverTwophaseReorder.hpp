@@ -26,6 +26,7 @@
 #include <map>
 #include <ostream>
 #include <complex>
+#include <utility>
 
 struct UnstructuredGrid;
 
@@ -115,7 +116,7 @@ namespace Opm
         //// \return vector of iteration per cell
         const std::vector<int>& getReorderIterations() const;
         double getInflectionPoint();
-
+		void setdt(double dt) {dt_ = dt;};
     private:
 		void initInflectionPoint_old(const double M);
 		// Complex functions
@@ -181,11 +182,15 @@ namespace Opm
         std::vector<int> ja_downw_;
 
         struct Residual;
+        struct ResidualParameters;
         double fracFlow(double s, int cell) const;
         double fracFlowDerivative(double s, int cell) const;
-
+	
         struct GravityResidual;
         void mobility(double s, int cell, double* mob, double * dmob) const;
+		
+		void constructFileNameFromParams(std::ostringstream & filename, char solver_type, double M, double dtpv, double in, double out, double s0);
+		void selectSolverAndSolve(const int cell, double s0, Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path);
     };
 
 } // namespace Opm
