@@ -38,7 +38,7 @@ using std::string;
 
 void parseArguments(int argc, char ** argv, double & muw, double & muo, 
 					bool & verbose, bool & solver_flag, double & time_step_days, double & comp_length_days,
-					double & xsize, double & ysize, int & xdim, int & ydim, char & solver_type, 
+					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, char & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z)
@@ -115,14 +115,10 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 		}
 		else if(std::string(argv[i]) == "-m")
 		{
-			i++;
-			muw = std::atof(argv[i]);
+			muw = std::atof(argv[++i]);
 			muo = muw;
 			if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
-			{ 
-				i++;
-			    muo = std::atoi(argv[i]);
-			}
+			    muo = std::atoi(argv[++i]);
 			std::cout << "Using viscosity " << muw << " and " << muo << " cP for water and oil, respectively\n";
 		}
 		else if(std::string(argv[i]) == "-v")
@@ -152,8 +148,10 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 		{
 			xsize = std::atof(argv[++i]);
 			ysize = std::atof(argv[++i]);
+			zsize = std::atof(argv[++i]);
 			xdim = std::atoi(argv[++i]);
 			ydim = std::atoi(argv[++i]);
+			zdim = std::atoi(argv[++i]);
 			
 			std::cout << "Using " << xdim << "x" << ydim << " cells on a " << xsize << " m by " << ysize << " m domain.\n";
 		}
@@ -255,6 +253,19 @@ bool readPrintPointsFromFile(std::string filename, std::vector<int> & print_poin
 	printStateDataToVTKFile(vtkfilename.str(), state, grid);
 }
 
+/*template <class Functor>
+void PrintFunctor<Functor>::printFunctorValues(const Functor& f, int n, const char * filename)
+{
+	double dx = 1/(n-1);
+	std::ofstream file; file.open(filename);
+	file << "x \t y \n";
+	for (int i = 0; i < n; i++)
+	{
+		file << dx*i << " \t" << f(dx*i) << "\n";
+	}
+	file.close();
+}*/
+
 void printStateDataToVTKFile(std::string vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid)
 {
 	std::ofstream vtkfile(vtkfilename.c_str());
@@ -281,6 +292,17 @@ void printIterationsFromVector(string execName, const Opm::TransportSolverTwopha
 		file << i << "\t" << iterations[i] << "\n";
 	}
 	file.close();
+}
+
+string replaceDot(double num)
+{
+	//return replaceDot(boost::lexical_cast<std::string>(num));
+	return replaceDot(std::to_string(num));
+}
+
+string replaceDot(string str) 
+{
+	return replaceStrChar(str, ".", '_');
 }
 
 string replaceStrChar(string str, const string & replace, char ch)

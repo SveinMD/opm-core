@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include <cstring>
 #include <iostream>
 //#include <iomanip>
 //#include <fstream>
@@ -40,12 +41,14 @@ void printStateDataToVTKFile(string execName, std::ostringstream & vtkfilename, 
 						 double comp_length_days, double time_step_days, int i /*, int plotInterval*/);
 void printStateDataToVTKFile(string vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid);						 
 string replaceStrChar(string str, const string & replace, char ch);
+string replaceDot(string str);
+string replaceDot(double num);
 void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, 
 							   int i, int num_cells, const char solver_type, 
 							   const double comp_length, const double time_step);
 void parseArguments(int argc, char ** argv, double & muw, double & muo, 
 					bool & verbose, bool & solver_flag, double & time_step_days, double & comp_length_days,
-					double & xsize, double & ysize, int & xdim, int & ydim, char & solver_type, 
+					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, char & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z);
@@ -73,5 +76,23 @@ void interpolatePermData(std::vector<double> & perm, std::vector<double> Kx, std
 						 int layer, double xpos, double ypos, double xsize, double ysize,
 						 int nxcells, int nycells, double xsizeperm, double ysizeperm,
 						 int nxcellsperm, int nycellsperm, double buildCache);
+						
+/*template <class Functor>
+class PrintFunctor
+{
+	public:
+	//template <class Functor> 
+	static void printFunctorValues(const Functor& f, int n, const char * filename)
+	{
+		double dx = 1/(n-1);
+		std::ofstream file; file.open(filename);
+		file << "x \t y \n";
+		for (int i = 0; i < n; i++)
+		{
+			file << dx*i << " \t" << f(dx*i) << "\n";
+		}
+		file.close();
+	}
+};*/
 						 
 }
