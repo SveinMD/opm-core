@@ -187,10 +187,22 @@ class PrintFunctor
 			double eps = 3.0e-8;
 			int iter;
 			double a=x1,b=x2,c=x2,d=a,e=a,min1,min2;
-			double fa=f(a),fb=f(b),fc,p,q,r,s,tol1,xm;
+			double fa=f(a),fb=f(b),fc=f(initial_guess),p,q,r,s,tol1,xm;
 			
-			if((fa > 0.0 && fb > 0.0) || (fa < 0.0 && fb < 0.0))
-				return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
+			if(fa*fc < 0)
+			{
+				b = initial_guess; fb = fc;
+			}
+			else if(fb*fc < 0)
+			{
+				a = initial_guess; fa = fc;
+			}
+			if(fa*fb >= 0)
+			{
+				if ( std::abs(fa) <= tol) return a;
+				else if ( std::abs(fb) <= tol) return b;
+				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
+			}
 			
 			fc = fb;
 			
