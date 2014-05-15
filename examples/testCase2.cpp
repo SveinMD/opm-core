@@ -154,7 +154,7 @@ try
     // Old: state.setFirstSat(allcells, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
 	state.setFirstSat(allcells, *prop_pointer, TwophaseState::MinSat);
 		
-	unsigned int nzt = floor(nz*0.5);
+	/*unsigned int nzt = floor(nz*0.5);
     unsigned int nzb = nz - nzt;
     std::vector<int> tophalf(nzt*nx);
     for(unsigned int cell = 0; cell < nzt*nx; ++cell)
@@ -168,7 +168,7 @@ try
 	}
 	state.setFirstSat(tophalf, shadow_props.usePermeability(&perm[0]), TwophaseState::MinSat);
 	state.setFirstSat(bottomhalf, shadow_props.usePermeability(&perm[0]), TwophaseState::MaxSat);	
-		std::cout << "Init. sat done" << std::endl;
+		std::cout << "Init. sat done" << std::endl;*/
     /*unsigned int nxl = floor(nx*0.5);
     unsigned int nxr = nx - nxl;
     std::vector<int> lefthalf(nxr*ny);
