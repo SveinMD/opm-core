@@ -384,9 +384,9 @@ class PrintFunctor
 								   const int max_iter,
 								   const double tolerance,
 								   bool verbose,
-								   int& iterations_used//,
-								   //double dummy_variable
-								   , bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
+								   int& iterations_used, 
+								   bool isTestRun, 
+								   std::vector<std::pair<double,double>> & solution_path)
 		{
 			double invalid_ans = -1;
 			int j;
@@ -395,6 +395,15 @@ class PrintFunctor
 			if(isTestRun)
 				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
 			
+			if(verbose)
+				std::cout << "----------------------- Ridder's Method iteration ---------------------------\n"
+						<< "Initial guess: " << initial_guess << "\n"
+						<< "Max iterations: " << max_iter << "\n"
+						<< "Error tolerance: " << tolerance << "\n"
+						<< "# iter.\tx\t\tf(x) \n";
+            
+            if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
+            
 			fh = f(x2);
 			if(fh*f_init < 0)
 			{
@@ -423,6 +432,7 @@ class PrintFunctor
 					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s); // *s); //
 					if(isTestRun)
 						addPointToVector(xnew,f(xnew),solution_path); // REMOVE FOR SPEED TESTS
+					if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
 					if (fabs(xnew-ans) <= tolerance) return xnew;
 					ans = xnew;
 					fnew = f(ans);
@@ -443,6 +453,7 @@ class PrintFunctor
 					if(fabs(xh-xl) <= tolerance)
 						return ans;
 				}
+				if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
 				return ErrorPolicy::handleTooManyIterationsNewton(xnew, max_iter, f(xnew));
 			}
 			else {
@@ -457,6 +468,98 @@ class PrintFunctor
 			return 0.0; // Unreachable
 		}
 		
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   double x1, double x2,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used, 
+								   bool isTestRun, 
+								   std::vector<std::pair<double,double>> & solution_path, double & fnew)
+		{
+			double invalid_ans = -1;
+			int j;
+			double ans,fh,fl,fm,s,xh,xl,xm,xnew=initial_guess,f_init=f(initial_guess);
+			
+			if(isTestRun)
+				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
+			
+			if(verbose)
+				std::cout << "----------------------- Ridder's Method iteration ---------------------------\n"
+						<< "Initial guess: " << initial_guess << "\n"
+						<< "Max iterations: " << max_iter << "\n"
+						<< "Error tolerance: " << tolerance << "\n"
+						<< "# iter.\tx\t\tf(x) \n";
+            
+            if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
+            
+			fh = f(x2);
+			if(fh*f_init < 0)
+			{
+				fl = f_init;
+				x1 = initial_guess;
+			}
+			else
+			{
+				fl = f(x1);
+				if(fl*f_init < 0)
+				{
+					fh = f_init;
+					x2 = initial_guess;
+				}
+			}
+			
+			if( fl*fh < 0.0 ) {
+				xl = x1; xh = x2;
+				ans = invalid_ans;
+				for(j = 1; j <= max_iter; j++) {
+					++iterations_used;
+					xm = 0.5*(xl+xh);
+					fm = f(xm); fnew = fm;
+					s = sqrt(fm*fm-fl*fh); //newt(0.5,fm*fm-fl*fh,3); // Note: The iterative method returns the reciprocal root!
+					if(s == 0.0) return ans; //if(s == 0.0) return ans; // if(fabs(s) <= tolerance) return ans; // 
+					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s); // *s); //
+					if(isTestRun)
+						addPointToVector(xnew,f(xnew),solution_path); // REMOVE FOR SPEED TESTS
+					if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
+					if (fabs(xnew-ans) <= tolerance) return xnew; // Note: This return statement gives an 
+					// inaccurate fnew value, which will give the wrong update in the 
+					// first Newton iteration of the Globalized Newton procedure! 
+					ans = xnew;
+					fnew = f(ans);
+					if(fabs(fnew) <= tolerance) return ans; // if(fnew == 0.0) return ans;
+					if(sign(fm,fnew) != fm) {
+						xl = xm;  fl = fm;
+						xh = ans; fh = fnew;
+					}
+					else if(sign(fl,fnew) != fl) {
+						xh = ans; fh = fnew;
+					}
+					else if(sign(fh,fnew) != fh) {
+						xl = ans; fl = fnew;
+					}
+					else {
+						ErrorPolicy::handleBracketingFailure(xl,xh,fl,fh);
+					}
+					if(fabs(xh-xl) <= tolerance)
+						return ans;
+				}
+				if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
+				return ErrorPolicy::handleTooManyIterationsNewton(xnew, max_iter, f(xnew));
+			}
+			else {
+				if(isTestRun)
+					addPointToVector(x1,f(x1),solution_path); // REMOVE FOR SPEED TESTS
+				if(fabs(fl) <= tolerance) return x1; // if(fl == 0.0) return x1;
+				if(isTestRun)
+					addPointToVector(x2,f(x2),solution_path); // REMOVE FOR SPEED TESTS
+				if(fabs(fh) <= tolerance) return x2; // if(fh == 0.0) return x2;
+				return ErrorPolicy::handleBracketingFailure(x1,x2,fl,fh);
+			}
+			return 0.0; // Unreachable
+		}
 		
 		template <class Functor>
 		inline static double solve(const Functor& f,
@@ -466,8 +569,7 @@ class PrintFunctor
 								   const double tolerance,
 								   bool verbose,
 								   int& iterations_used,
-								   bool dummy
-								   )
+								   bool dummy)
 		{
 			double s = 0.0;
 			double x = initial_guess;
@@ -851,6 +953,44 @@ class PrintFunctor
 			
 			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, fx);
 		}
+		
+		// Newton Raphson solver
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double f_init,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used,
+								   bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
+        {
+            double x = initial_guess, xNew;
+            
+            if(verbose)
+            std::cout << "----------------------- Newton iteration ---------------------------\n"
+					  << "Initial guess: " << initial_guess << "\n"
+                      << "Max iterations: " << max_iter << "\n"
+                      << "Error tolerance: " << tolerance << "\n"
+                      << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
+            double fx = f_init; //f(x);
+            for(int i = 0; i < max_iter; i++, iterations_used++)
+            {
+				xNew = x - fx/f.ds(x);
+				fx = f(xNew);
+				if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,fx,f.ds(x));
+				if(isTestRun)
+					addPointToVector(xNew,fx,solution_path); // REMOVE FOR SPEED TESTS
+				if(fabs(x-xNew) < tolerance || fabs(fx) < tolerance)
+				{
+					if(verbose) std::cout << "---------------------- End Newton iteration ------------------------\n";
+						return xNew;
+				}
+				x = xNew;
+			}
+			
+			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, fx);
+		}
 	};
 
 
@@ -1178,13 +1318,14 @@ class PrintFunctor
 								   bool isTestRun,
 								   std::vector<std::pair<double,double>> & solution_path)
 		{
+			double fnew = 0.0;
 			// Run a few steps of the initializer, e.g. Ridders' method
-			//double sat = Ridder<ContinueOnError>::solve(f,initial_guess,x1,x2,2,tolerance,verbose,iterations_used,isTestRun,solution_path);
-			double sat = RegulaFalsi<ContinueOnError>::solve(f,initial_guess,x1,x2,2,tolerance,iterations_used,verbose,isTestRun,solution_path);
-			// Compute bracket
-			
+			double sat = Ridder<ContinueOnError>::solve(f,initial_guess,x1,x2,2,tolerance,verbose,iterations_used,isTestRun,solution_path,fnew);
+			//double sat = RegulaFalsi<ContinueOnError>::solve(f,initial_guess,x1,x2,2,tolerance,iterations_used,verbose,isTestRun,solution_path);
+			if(fabs(fnew) < tolerance)
+				return sat;
 			// Refine answer from initializer with Newton-Raphson
-			sat = NewtonRaphson<ThrowOnError>::solve(f,sat,max_iter,tolerance,verbose,iterations_used);
+			sat = NewtonRaphson<ThrowOnError>::solve(f,sat,fnew,max_iter,tolerance,verbose,iterations_used, isTestRun, solution_path);
 			
 			return sat;
 		}
