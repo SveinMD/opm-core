@@ -28,6 +28,8 @@
 #include <complex>
 #include <utility>
 
+#include <opm/core/utility/RootFinderEnum.hpp>
+
 struct UnstructuredGrid;
 
 namespace Opm
@@ -64,8 +66,7 @@ namespace Opm
                                        const double* gravity,
                                        const double tol,
                                        const int maxit,
-                                       char solver_type,
-                                       bool dummy);
+                                       RootFinderType solver_type);
 		
 		/// Construct solver.
         /// \param[in] grid      A 2d or 3d grid.
@@ -80,9 +81,8 @@ namespace Opm
                                        const double* gravity,
                                        const double tol,
                                        const int maxit,
-                                       char solver_type,
-                                       bool verbose,
-                                       bool dummy);
+                                       RootFinderType solver_type,
+                                       bool verbose);
 		
         // Virtual destructor.
         virtual ~TransportSolverTwophaseReorder();
@@ -155,8 +155,7 @@ namespace Opm
         std::vector<double> smax_;
         double tol_;
         int maxit_;
-        char solver_type_;
-        bool solver_flag_;
+        RootFinderType solver_type_;
         double flux_func_inflection_point_; // The point where the fractional flow function has an inflection point, i.e. d^2fw/ds^2 = 0
 
         const double* darcyflux_;   // one flux per grid face
@@ -165,7 +164,7 @@ namespace Opm
         double dt_;
         std::vector<double> saturation_;        // one per cell, only water saturation!
         std::vector<double> fractionalflow_;  // = m[0]/(m[0] + m[1]) per cell
-        std::vector<double> fractionalflowderivative_; // =  (dm[0]*(m[0] + m[1])+m[0]*(dm[0] + dm[1]))/(m[0] + m[1])^2 per cell
+        //std::vector<double> fractionalflowderivative_; // =  (dm[0]*(m[0] + m[1])+m[0]*(dm[0] + dm[1]))/(m[0] + m[1])^2 per cell
         std::vector<int> reorder_iterations_;
         //std::vector<double> reorder_fval_;
         // For gravity segregation.
@@ -185,11 +184,12 @@ namespace Opm
         struct ResidualParameters;
         double fracFlow(double s, int cell) const;
         double fracFlowDerivative(double s, int cell) const;
+        double fracFlowDerivativeAlt(double s, int cell) const;
 	
         struct GravityResidual;
         void mobility(double s, int cell, double* mob, double * dmob) const;
 		
-		void constructFileNameFromParams(std::ostringstream & filename, char solver_type, double M, double dtpv, double in, double out, double s0);
+		void constructFileNameFromParams(std::ostringstream & filename, std::string solver_type, double M, double dtpv, double in, double out, double s0);
 		void selectSolverAndSolve(const int cell, double s0, Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path);
     };
 

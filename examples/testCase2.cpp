@@ -57,10 +57,9 @@ try
 	
 	bool verbose = false;
 	bool printIterations = false;
-	bool solver_flag = false;
 	bool is_inhom_perm = false;
 	
-	char solver_type = 'r';
+	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
 	
 	string perm_file_name = "spe_perm.dat";
 	string print_points_file_name = "print_points.dat";
@@ -69,14 +68,10 @@ try
 	using namespace Opm;
 	
 	if(argc > 1)
-		parseArguments(argc, argv, muw, muo, verbose, solver_flag, time_step_days, comp_length_days, 
+		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, is_inhom_perm,
 					   srcVol, sinkVol, grav_x, grav_y, grav_z);
-	
-	char extra_solver_char = '\0';
-	if(solver_flag)
-		extra_solver_char = 'a';
 			
 	if(verbose)
 		std::cout << "----------------- Initializing problem -------------------\n";
@@ -135,8 +130,8 @@ try
     
     const double tolerance = 1e-9;
     const int max_iterations = 50;
-    //Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]), grav, tolerance, max_iterations, solver_type, verbose, solver_flag);
-	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose, solver_flag);
+    //Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]), grav, tolerance, max_iterations, solver_type, verbose);
+	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose);
 
     const double comp_length = comp_length_days*day;
     const double dt = time_step_days*day;
@@ -221,7 +216,7 @@ try
 		{
 			it++;
 			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days);
-			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_flag, solver_type, extra_solver_char, comp_length_days, time_step_days, i /*i , plotInterval*/);
+			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_type, comp_length_days, time_step_days, i /*i , plotInterval*/);
 		}
     }
     clock.stop();

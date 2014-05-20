@@ -30,25 +30,33 @@
 //#include <boost/algorithm/string.hpp>
 //#include <boost/lexical_cast.hpp>
 
+#include <boost/bimap.hpp>
+
 namespace Opm
 {
-
+typedef boost::bimap<RootFinderType,std::string> rfs_map; // (r)oot (f)inder to (s)tring bidirectional map
 using std::string;
+
+rfs_map getRootFinderToStringMap();
+string getIdentifierFromSolverType(const RootFinderType solver_type);
+RootFinderType getSolverTypeFromIdentifier(string solver_type);
+rfs_map getRootFinderToNameMap();
+string getNameFromSolverType(const RootFinderType solver_type);
 
 void initPrintPointVector(std::vector<int> & print_points, int num_time_steps, int nprint, string print_points_file_name);
 void printStateDataToVTKFile(string execName, std::ostringstream & vtkfilename, Opm::TwophaseState state, 
-						 const UnstructuredGrid& grid, bool solver_flag, char solver_type, char extra_solver_char, 
+						 const UnstructuredGrid& grid, const RootFinderType solver_type, 
 						 double comp_length_days, double time_step_days, int i /*, int plotInterval*/);
 void printStateDataToVTKFile(string vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid);						 
 string replaceStrChar(string str, const string & replace, char ch);
 string replaceDot(string str);
 string replaceDot(double num);
 void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, 
-							   int i, int num_cells, const char solver_type, 
+							   int i, int num_cells, const RootFinderType solver_type, 
 							   const double comp_length, const double time_step);
 void parseArguments(int argc, char ** argv, double & muw, double & muo, 
-					bool & verbose, bool & solver_flag, double & time_step_days, double & comp_length_days,
-					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, char & solver_type, 
+					bool & verbose, double & time_step_days, double & comp_length_days,
+					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, RootFinderType & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z);

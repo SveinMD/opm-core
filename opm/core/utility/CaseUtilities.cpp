@@ -33,63 +33,72 @@
 
 namespace Opm
 {
-
-using std::string;
+	rfs_map getRootFinderToStringMap()
+	{
+		rfs_map map;
+		map.insert(rfs_map::value_type(RegulaFalsiType,"r"));
+		map.insert(rfs_map::value_type(BrentType,"b"));
+		map.insert(rfs_map::value_type(RiddersType,"i"));
+		map.insert(rfs_map::value_type(NewtonTrustRegionType,"t"));
+		map.insert(rfs_map::value_type(NewtonTrustRegionApproxType,"a"));
+		map.insert(rfs_map::value_type(GlobalizedNewtonType,"g"));
+		map.insert(rfs_map::value_type(NewtonRaphsonType,"n"));
+		return map;
+	}
+	string getIdentifierFromSolverType(const RootFinderType solver_type)
+	{
+		// TODO: Error handling
+		rfs_map map = getRootFinderToStringMap();
+		rfs_map::left_const_iterator l_iter = map.left.find(solver_type);
+		return l_iter->second;
+	}
+	RootFinderType getSolverTypeFromIdentifier(string solver_type)
+	{
+		// TODO: Error handling: Fall back to regula falsi?
+		rfs_map map = getRootFinderToStringMap();
+		rfs_map::right_const_iterator r_iter = map.right.find(solver_type);
+		return r_iter->second;
+	}
+	rfs_map getRootFinderToNameMap()
+	{
+		rfs_map map;
+		map.insert(rfs_map::value_type(RegulaFalsiType,"Regula Falsi"));
+		map.insert(rfs_map::value_type(BrentType,"Brent"));
+		map.insert(rfs_map::value_type(RiddersType,"Ridders"));
+		map.insert(rfs_map::value_type(NewtonTrustRegionType,"Newton Trust Region"));
+		map.insert(rfs_map::value_type(NewtonTrustRegionApproxType,"Appeoximate Newton Trust Region"));
+		map.insert(rfs_map::value_type(GlobalizedNewtonType,"Globalized Newton"));
+		map.insert(rfs_map::value_type(NewtonRaphsonType,"Newton Raphson"));
+		return map;
+	}
+	string getNameFromSolverType(const RootFinderType solver_type)
+	{
+		// TODO: Error handling
+		rfs_map map = getRootFinderToNameMap();
+		rfs_map::left_const_iterator l_iter = map.left.find(solver_type);
+		return l_iter->second;
+	}
 
 void parseArguments(int argc, char ** argv, double & muw, double & muo, 
-					bool & verbose, bool & solver_flag, double & time_step_days, double & comp_length_days,
-					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, char & solver_type, 
+					bool & verbose, double & time_step_days, double & comp_length_days,
+					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, RootFinderType & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
+	// -i: Ridders
+	// -b: Brent
+	// -t: Trust Region
+	// -t a: Approximate Trust Region
+	// -g: Globalized Newton
 	for(int i = 1; i < argc; i++)
 	{
 		if(std::string(argv[i]) == "-s")
 		{
-			i++;
-			if(std::string(argv[i]) == "n")
-			{
-				std::cout << "Newton solver chosen for single cell problem\n";
-				solver_type = 'n';
-			}
-			else if(std::string(argv[i]) == "t")
-			{
-				std::cout << "Newton Raphson Trust region solver chosen for single cell problem\n";
-				solver_type = 't';
-				if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
-				{ 
-					i++;
-					solver_flag = true;
-				}
-			}
-			else if(std::string(argv[i]) == "u")
-			{
-				std::cout << "Regula Falsi Trust region solver chosen for single cell problem\n";
-				solver_type = 'u';
-			}
-			else if(std::string(argv[i]) == "i")
-			{
-				std::cout << "Ridder's solver chosen for single cell problem\n";
-				solver_type = 'i';
-			}
-			else if(std::string(argv[i]) == "b")
-			{
-				std::cout << "Brent's solver chosen for single cell problem\n";
-				solver_type = 'b';
-			}
-			else if(std::string(argv[i]) == "r")
-			{
-				std::cout << "Regula Falsi solver chosen for single cell problem\n";
-				solver_type = 'r';
-			}
-			else
-			{
-				solver_type = 'r';
-			}
-		
+			solver_type = getSolverTypeFromIdentifier(std::string(argv[++i]));
+			std::cout << getNameFromSolverType(solver_type) << " solver chosen for single cell problem\n";
 		}
 		else if(std::string(argv[i]) == "-t")
 		{
@@ -243,12 +252,10 @@ bool readPrintPointsFromFile(std::string filename, std::vector<int> & print_poin
 	}
 }
 
- void printStateDataToVTKFile(string execName, std::ostringstream & vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid, bool solver_flag, char solver_type, char extra_solver_char, double comp_length_days, double time_step_days, int i /*, int plotInterval*/)
+ void printStateDataToVTKFile(string execName, std::ostringstream & vtkfilename, Opm::TwophaseState state, const UnstructuredGrid& grid, const RootFinderType solver_type, double comp_length_days, double time_step_days, int i /*, int plotInterval*/)
 {
 	vtkfilename.str("");
-	vtkfilename << execName << "-s-" << solver_type;
-	if(solver_flag)
-		vtkfilename << extra_solver_char;
+	vtkfilename << execName << "-s-" << getIdentifierFromSolverType(solver_type);
 	vtkfilename << "-T-" << replaceStrChar(std::to_string(comp_length_days),".",'_') << "-t-" << replaceStrChar(std::to_string(time_step_days),".",'_') << "-" << std::setw(3) << std::setfill('0') <<  i << ".vtu"; //(int)(i/plotInterval) << ".vtu";
 	printStateDataToVTKFile(vtkfilename.str(), state, grid);
 }
@@ -275,7 +282,7 @@ void printStateDataToVTKFile(std::string vtkfilename, Opm::TwophaseState state, 
 	Opm::writeVtkData(grid, dm, vtkfile);
 }
 
-void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, int i, int num_cells, const char solver_type, const double comp_length, const double time_step)
+void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, int i, int num_cells, const RootFinderType solver_type, const double comp_length, const double time_step)
 {
 	std::vector<int> iterations = transport_solver.getReorderIterations();
 	std::ostringstream iterfilename;
@@ -285,7 +292,7 @@ void printIterationsFromVector(string execName, const Opm::TransportSolverTwopha
 	
 	// Set filename and open
 	iterfilename.str(""); 
-	iterfilename << execName << "-iterations-s-" << solver_type << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
+	iterfilename << execName << "-iterations-s-" << getIdentifierFromSolverType(solver_type) << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
 	std::ofstream file; file.open(iterfilename.str().c_str());
 	for ( int i = 0; i < num_cells; i++)
 	{
@@ -652,7 +659,7 @@ double interpolate(double fa,double a,double fb,double b,double target)
 		return fa;
 	double ftarget = fa + (fb-fa)/(b-a)*(target-a);
 	if(ftarget < 0)
-		std::cout << "Negative permeability using (" << fa << "," << a << "),(" << fb << "," << b << ") with target " << target << "\n";
+		std::cout << "Negative permeability found when interpolating (" << a << "," << fa << "),(" << b << "," << fb << ") for target " << target << "\n";
 	return ftarget;
 }
 

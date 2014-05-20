@@ -55,21 +55,19 @@ namespace Opm
                                                                    const double* gravity,
                                                                    const double tol,
                                                                    const int maxit,
-                                                                   char solver_type,
-                                                                   bool verbose,
-                                                                   bool solver_flag)
+                                                                   RootFinderType solver_type,
+                                                                   bool verbose)
         : grid_(grid),
           props_(props),
           tol_(tol),
           maxit_(maxit),
           solver_type_(solver_type),
-          solver_flag_(solver_flag),
           darcyflux_(0),
           source_(0),
           dt_(0.0),
           saturation_(grid.number_of_cells, -1.0),
           fractionalflow_(grid.number_of_cells, -1.0),
-          fractionalflowderivative_(grid.number_of_cells, -1.0),
+          //fractionalflowderivative_(grid.number_of_cells, -1.0),
           reorder_iterations_(grid.number_of_cells, 0),
           mob_(2*grid.number_of_cells, -1.0),
           dmob_(2*grid.number_of_cells, -1.0)
@@ -107,20 +105,18 @@ namespace Opm
                                                                    const double* gravity,
                                                                    const double tol,
                                                                    const int maxit,
-                                                                   char solver_type,
-                                                                   bool solver_flag)
+                                                                   RootFinderType solver_type)
         : grid_(grid),
           props_(props),
           tol_(tol),
           maxit_(maxit),
           solver_type_(solver_type),
-          solver_flag_(solver_flag),
           darcyflux_(0),
           source_(0),
           dt_(0.0),
           saturation_(grid.number_of_cells, -1.0),
           fractionalflow_(grid.number_of_cells, -1.0),
-          fractionalflowderivative_(grid.number_of_cells, -1.0),
+          //fractionalflowderivative_(grid.number_of_cells, -1.0),
           reorder_iterations_(grid.number_of_cells, 0),
           mob_(2*grid.number_of_cells, -1.0),
           dmob_(2*grid.number_of_cells, -1.0)
@@ -164,7 +160,7 @@ namespace Opm
           dt_(0.0),
           saturation_(grid.number_of_cells, -1.0),
           fractionalflow_(grid.number_of_cells, -1.0),
-          fractionalflowderivative_(grid.number_of_cells, -1.0),
+          //fractionalflowderivative_(grid.number_of_cells, -1.0),
           reorder_iterations_(grid.number_of_cells, 0),
           mob_(2*grid.number_of_cells, -1.0),
           dmob_(2*grid.number_of_cells, -1.0)
@@ -191,8 +187,7 @@ namespace Opm
             initGravity(gravity);
             initColumns();
         }
-        solver_type_ = 'r';
-        solver_flag_ = false;
+        solver_type_ = RegulaFalsiType;
     }
 
 
@@ -249,7 +244,6 @@ namespace Opm
         int cell;
         double s0;
         double influx;    // sum_j min(v_ij, 0)*f(s_j) + q_w
-        double dinflux;   // sum_j min(v_ij, 0)*dfds(s_j) + q_w
         double outflux;   // sum_j max(v_ij, 0) - q
         double comp_term; // q - sum_j v_ij
         double dtpv;    // dt/pv(i)
@@ -263,7 +257,6 @@ namespace Opm
             double src_flux       = -tm.source_[cell];
             bool src_is_inflow = src_flux < 0.0;
             influx  =  src_is_inflow ? src_flux : 0.0;
-            dinflux = 0.0;
             outflux = !src_is_inflow ? src_flux : 0.0;
             dtpv    = tm.dt_/tm.porevolume_[cell];
             // Compute fluxes over interior edges. Boundary flow is supposed to be
@@ -284,7 +277,6 @@ namespace Opm
                 if (other != -1) {
                     if (flux < 0.0) {
                         influx  += flux*tm.fractionalflow_[other];
-                        dinflux += flux*tm.fractionalflowderivative_[other];
                     } else {
                         outflux += flux;
                     }
@@ -298,8 +290,7 @@ namespace Opm
         }
         double ds(double s) const
         {
-			//return 1 + dtpv*(dinflux + outflux*tm.fracFlowDerivative(s,cell));
-			return 1 + dtpv*(outflux*tm.fracFlowDerivative(s,cell));
+			return 1 + dtpv*outflux*tm.fracFlowDerivative(s,cell);
 		}
     };
 
@@ -430,7 +421,7 @@ namespace Opm
 					selectSolverAndSolve(cell,param.s0_,res,iters_used,true,solutionPath);
 					
 					std::ostringstream filename;
-					constructFileNameFromParams(filename,solver_flag_ ? 'a' : solver_type_,M,res.dtpv,res.influx,res.outflux,param.s0_);
+					constructFileNameFromParams(filename,getIdentifierFromSolverType(solver_type_),M,res.dtpv,res.influx,res.outflux,param.s0_);
 					std::ofstream file; file.open(filename.str().c_str());
 					file.precision(20);
 					//file << "Iterations: " << iters_used << "\n";
@@ -451,48 +442,37 @@ namespace Opm
         // add if it is iteration on an out loop
         reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
-        fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
+        //fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
     }
     
     void TransportSolverTwophaseReorder::selectSolverAndSolve(const int cell, double s0, TransportSolverTwophaseReorder::Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
     {
-		if(solver_type_ == 'n')
-			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used);
-        else if(solver_type_ == 't')
+		if(NewtonRaphsonType == solver_type_)
+			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, s0, maxit_, tol_, getVerbose(), iters_used);
+        else if(NewtonTrustRegionType == solver_type_)
         {
 			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
-			if(!solver_flag_)
-			{
-				double inflec = getInflectionPoint();
-				if(getVerbose())
-					std::cout << "Using precise Newton Raphson Trust Region method in cell " << cell << "\n";
-				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solve(res, s0, M, inflec, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
-			}
-			else
-			{
-				if(getVerbose())
-					std::cout << "Using approximate Newton Raphson Trust Region method in cell " << cell << "\n";
-				saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, s0, M, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
-			}
+			double inflec = getInflectionPoint();
+			saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solve(res, s0, M, inflec, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
 		}
-		else if(solver_type_ == 'u')
-        {
-			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
-			saturation_[cell] = RegulaFalsiTrustRegion<ThrowOnError>::solve(res, s0, 0.0, 1.0, M, maxit_, tol_, getVerbose(), iters_used);
-		}
-		else if(solver_type_ == 'i')
+		else if(NewtonTrustRegionApproxType == solver_type_)
 		{
+			double M = visc_[0]/visc_[1]; // Viscosity ratio, mu_w/mu_o for Trust Region scheme
+			saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, s0, M, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+		}
+		else if(RiddersType == solver_type_)
 			saturation_[cell] = Ridder<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
-		}
-		else if(solver_type_ == 'b')
-		{
+		else if(BrentType == solver_type_)
 			saturation_[cell] = Brent<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
-		}
+		else if(GlobalizedNewtonType == solver_type_)
+			saturation_[cell] = GlobalizedNewton<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+        else if(RegulaFalsiType == solver_type_)
+			saturation_[cell] = RegulaFalsi<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used,getVerbose(),isTestRun,solution_path);
         else
-			saturation_[cell] = RootFinder::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used,isTestRun,solution_path);
+			saturation_[cell] = RootFinder::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used,getVerbose(),isTestRun,solution_path);
 	}
     
-    void TransportSolverTwophaseReorder::constructFileNameFromParams(std::ostringstream & filename, char solver_type, double M, double dtpv, double in, double out, double s0)
+    void TransportSolverTwophaseReorder::constructFileNameFromParams(std::ostringstream & filename, std::string solver_type, double M, double dtpv, double in, double out, double s0)
 	{
 		filename << "convergence-s-" << solver_type << "-M-" << replaceDot(M) << "-dtpv-" << replaceDot(dtpv) << "-in-" << replaceDot(in) << "-out-" << replaceDot(out) << "-s0-" << replaceDot(s0) << ".data";
 	}
@@ -526,7 +506,7 @@ namespace Opm
         for (int i = 0; i < num_cells; ++i) {
             const int cell = cells[i];
             fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
-            fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
+            //fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
             s0[i] = saturation_[cell];
         }
         // Solve once in each cell.
@@ -579,7 +559,7 @@ namespace Opm
         for (int i = 0; i < num_cells; ++i) {
             const int cell = cells[i];
             fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
-            fractionalflowderivative__[cell] = fracFlowDerivative(saturation_[cell], cell);
+            //fractionalflowderivative__[cell] = fracFlowDerivative(saturation_[cell], cell);
             s0[i] = saturation_[cell];
         }
         do {
@@ -616,6 +596,36 @@ namespace Opm
         mob[1] /= visc_[1];
         return mob[0]/(mob[0] + mob[1]);
     }
+    double TransportSolverTwophaseReorder::fracFlowDerivativeAlt(double s, int cell) const
+    {
+		double sat[2] = {s, 1.0 - s};
+		double mob[2]; 
+		double dmob[4];
+		double smob, sdmob;
+		props_.relperm(1, sat, &cell, mob, dmob);
+		
+		mob[0] /= visc_[0]; 
+		mob[1] /= visc_[1];
+		smob =  mob[0] + mob[1]; // Total mobility
+		
+		dmob[0] /= visc_[0]; 
+		dmob[3] /= -visc_[1];
+		sdmob =  dmob[0] + dmob[3]; // Total mobility differentiated wrt s
+		return (dmob[0]*smob - mob[0]*sdmob)/(smob*smob);
+	}
+	double TransportSolverTwophaseReorder::fracFlowDerivative(double s, int cell) const
+    {
+		double sat[2] = {s, 1.0 - s};
+		double relperm[2]; 
+		double drelperm[4];
+		double smob, sdmob, M;
+		props_.relperm(1, sat, &cell, relperm, drelperm);
+		
+		M = visc_[0]/visc_[1];
+		smob =  relperm[0] + M*relperm[1]; // Total mobility
+		sdmob =  drelperm[0] - M*drelperm[3]; // Total mobility differentiated wrt s
+		return (drelperm[0]*smob - relperm[0]*sdmob)/(smob*smob);
+	}
     
     void TransportSolverTwophaseReorder::initInflectionPoint(const double M)
     {
@@ -889,24 +899,6 @@ namespace Opm
 	double TransportSolverTwophaseReorder::getInflectionPoint() 
 	{
 		return flux_func_inflection_point_;
-	}
-    
-    double TransportSolverTwophaseReorder::fracFlowDerivative(double s, int cell) const
-    {
-		double sat[2] = {s, 1.0 - s};
-		double mob[2]; 
-		double dmob[4];
-		double smob, sdmob;
-		
-		props_.relperm(1, sat, &cell, mob, dmob);
-		
-		mob[0] /= visc_[0]; mob[1] /= visc_[1];
-		smob =  mob[0] + mob[1];
-		
-		dmob[0] /= visc_[0]; dmob[3] /= -visc_[1];
-		sdmob =  dmob[0] + dmob[3];
-		//std::cout << "Mob.: " << mob[0] << ", " << mob[1] << "\ndMob: " << dmob[0] << ", " << dmob[3] << std::endl;
-		return (dmob[0]*smob - mob[0]*sdmob)/(smob*smob);
 	}
 
     // Residual function r(s) for a single-cell implicit Euler gravity segregation
