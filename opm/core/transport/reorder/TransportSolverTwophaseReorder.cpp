@@ -376,7 +376,7 @@ namespace Opm
 		if(testChamber)
 		{
 			std::vector<ResidualParameters> parameters;
-			std::ifstream param_file("frac_flow_params.dat");
+			std::ifstream param_file("frac_flow_params.data");
 			string line;
 			if(param_file.is_open())
 			{
@@ -403,7 +403,7 @@ namespace Opm
 				param_file.close();
 			}
 			else
-				std::cout << "Failed to open parameter file case_parameters.data \n";
+				std::cout << "Failed to open parameter file frac_flow_params.data \n";
 			
 			if(parameters.size() > 0)
 			{
@@ -434,7 +434,7 @@ namespace Opm
 					file.close();
 				}
 			}
-			//OPM_THROW(std::runtime_error, "Abort due to testing\n");
+			OPM_THROW(std::runtime_error, "Abort due to testing\n");
 		}
         
         selectSolverAndSolve(cell,saturation_[cell],res,iters_used,false,solutionPath);
@@ -474,7 +474,7 @@ namespace Opm
     
     void TransportSolverTwophaseReorder::constructFileNameFromParams(std::ostringstream & filename, std::string solver_type, double M, double dtpv, double in, double out, double s0)
 	{
-		filename << "convergence-s-" << solver_type << "-M-" << replaceDot(M) << "-dtpv-" << replaceDot(dtpv) << "-in-" << replaceDot(in) << "-out-" << replaceDot(out) << "-s0-" << replaceDot(s0) << ".data";
+		filename << "convergence2-s-" << solver_type << "-M-" << replaceDot(M) << "-dtpv-" << replaceDot(dtpv) << "-in-" << replaceDot(in) << "-out-" << replaceDot(out) << "-s0-" << replaceDot(s0) << ".data";
 	}
 
     void TransportSolverTwophaseReorder::solveMultiCell(const int num_cells, const int* cells)
