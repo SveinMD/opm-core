@@ -41,6 +41,8 @@
 #include <math.h>
 //#include <complex>
 
+#include <opm/core/utility/StopWatch.hpp>
+
 #define EXPERIMENT_GAUSS_SEIDEL
 
 
@@ -288,6 +290,11 @@ namespace Opm
 			//std::cout << s << " " << s0 << " " << tm.dt_ << " " << dtpv << " " << outflux << " " << influx << "\n";
             return s - s0 + dtpv*(outflux*tm.fracFlow(s, cell) + influx);
         }
+        double operator()(double s, double & ds) const
+        {
+			//std::cout << s << " " << s0 << " " << tm.dt_ << " " << dtpv << " " << outflux << " " << influx << "\n";
+            return s - s0 + dtpv*(outflux*tm.fracFlow(s, cell, ds) + influx);
+        }
         double ds(double s) const
         {
 			return 1 + dtpv*outflux*tm.fracFlowDerivative(s,cell);
@@ -321,6 +328,29 @@ namespace Opm
         /*std::ofstream file; file.open("flux_values.dat",std::ios::app);
 		file << cell << " \t" << res.influx << " \t" << res.outflux << " \t" << res.dtpv << "\n";
 		file.close();*/
+		
+		time::StopWatch clock;
+		clock.start();
+		for(int i = 0; i < 1000000; i++)
+		{
+			double f = res(0.5);
+			double df = res.ds(0.5);
+			f = f*df;
+		}
+		clock.stop();
+		std::cout << "Using separate calls: " << clock.secsSinceStart() << " seconds \n";
+		
+		clock.start();
+		for(int i = 0; i < 1000000; i++)
+		{
+			double f,df=-1.0;
+			f = res(0.5,df);
+			f = f*df;
+		}
+		clock.stop();
+		std::cout << "Using simultaneous calls " << clock.secsSinceStart() << " seconds \n";
+		
+		OPM_THROW(std::runtime_error,"Timing test!\n");
 		
 		bool generateResidualValues = false;
 		if(generateResidualValues)
@@ -420,11 +450,11 @@ namespace Opm
 					iters_used = 0;
 					selectSolverAndSolve(cell,param.s0_,res,iters_used,true,solutionPath);
 					
+					// Print the convergence paths to pgf input files
 					std::ostringstream filename;
 					constructFileNameFromParams(filename,getIdentifierFromSolverType(solver_type_),M,res.dtpv,res.influx,res.outflux,param.s0_);
 					std::ofstream file; file.open(filename.str().c_str());
 					file.precision(20);
-					//file << "Iterations: " << iters_used << "\n";
 					file << "iter,\t x,\t y\n"; 
 					for(unsigned int j = 0; j < solutionPath.size(); j++)
 					{
@@ -432,6 +462,16 @@ namespace Opm
 						file << j << ",\t" << std::get<0>(solutionPath[j]) << ",\t " << (temp == 0 ? 1e-16 : temp) << "\n";
 					}
 					file.close();
+					// Print the residuals to pgf input files
+					std::string filenametemp = filename.str();
+					filename.str(""); filename.clear();
+					filename << "residual-" << filenametemp;
+					file.open(filename.str().c_str());
+					file.precision(20);
+					file << "s, \t Rs, \t dRs\n";
+					int ns = 100;
+					for(int j = 0; j < ns; j++)
+						file << (double)j/(ns-1) << ", \t" << res((double)j/(ns-1)) << ", \t" << res.ds((double)j/(ns-1)) << "\n";
 				}
 			}
 			OPM_THROW(std::runtime_error, "Abort due to testing\n");
@@ -589,16 +629,44 @@ namespace Opm
 
     double TransportSolverTwophaseReorder::fracFlow(double s, int cell) const
     {
-        double sat[2] = { s, 1.0 - s };
+        /*double sat[2] = { s, 1.0 - s };
         double mob[2];
         props_.relperm(1, sat, &cell, mob, 0);
         mob[0] /= visc_[0];
         mob[1] /= visc_[1];
+        return mob[0]/(mob[0] + mob[1]);*/
+        
+        double mob[2];
+        mobility(s, cell, mob, 0);
         return mob[0]/(mob[0] + mob[1]);
+    }
+    double TransportSolverTwophaseReorder::fracFlow(double s, int cell, double & ds) const
+    {
+        /*double sat[2] = { s, 1.0 - s };
+        double mob[2];
+        props_.relperm(1, sat, &cell, mob, 0);
+        mob[0] /= visc_[0];
+        mob[1] /= visc_[1];
+        return mob[0]/(mob[0] + mob[1]);*/
+        
+        if(ds == 0) {
+			double mob[2];
+			mobility(s, cell, mob, 0);
+			return mob[0]/(mob[0] + mob[1]);
+		} else {
+			double mob[2], dmob[2];
+			double smob, sdmob;
+			mobility(s, cell, mob, dmob);
+			smob = mob[0] + mob[1];
+			sdmob = dmob[0] + dmob[1];
+			ds = (dmob[0]*smob - mob[0]*sdmob)/(smob*smob);
+			return mob[0]/smob;
+		}
+		
     }
     double TransportSolverTwophaseReorder::fracFlowDerivativeAlt(double s, int cell) const
     {
-		double sat[2] = {s, 1.0 - s};
+		/*double sat[2] = {s, 1.0 - s};
 		double mob[2]; 
 		double dmob[4];
 		double smob, sdmob;
@@ -608,9 +676,18 @@ namespace Opm
 		mob[1] /= visc_[1];
 		smob =  mob[0] + mob[1]; // Total mobility
 		
-		dmob[0] /= visc_[0]; 
-		dmob[3] /= -visc_[1];
-		sdmob =  dmob[0] + dmob[3]; // Total mobility differentiated wrt s
+		dmob[0] = (dmob[0] - dmob[2])/visc_[0]; 
+		dmob[3] = (dmob[1] - dmob[3])/visc_[1];
+		sdmob =  dmob[0] + dmob[3]; // Total mobility differentiated wrt s_w
+		return (dmob[0]*smob - mob[0]*sdmob)/(smob*smob);*/
+		
+		double mob[2]; 
+		double dmob[2];
+		double smob, sdmob;
+		mobility(s, cell, mob, dmob);
+		smob =  mob[0] + mob[1]; // Total mobility
+		sdmob =  dmob[0] + dmob[1]; // Total mobility differentiated wrt s_w
+		
 		return (dmob[0]*smob - mob[0]*sdmob)/(smob*smob);
 	}
 	double TransportSolverTwophaseReorder::fracFlowDerivative(double s, int cell) const
@@ -622,8 +699,8 @@ namespace Opm
 		props_.relperm(1, sat, &cell, relperm, drelperm);
 		
 		M = visc_[0]/visc_[1];
-		smob =  relperm[0] + M*relperm[1]; // Total mobility
-		sdmob =  drelperm[0] - M*drelperm[3]; // Total mobility differentiated wrt s
+		smob =  relperm[0] + M*relperm[1]; // Total mobility, weighted by viscosity ratios
+		sdmob =  (drelperm[0]-drelperm[2]) + M*(drelperm[1] - drelperm[3]); // Total mobility differentiated wrt s_w
 		return (drelperm[0]*smob - relperm[0]*sdmob)/(smob*smob);
 	}
     
@@ -940,6 +1017,7 @@ namespace Opm
             double res = s - s0;
             double mobcell[2];
             tm.mobility(s, cell, mobcell,0);
+            //std::cout << "cell: " << cell << "\n";
             for (int nb = 0; nb < 2; ++nb) {
                 if (nbcell[nb] != -1) {
                     double m[2];
@@ -950,6 +1028,7 @@ namespace Opm
                         m[0] = tm.mob_[2*nbcell[nb]];
                         m[1] = mobcell[1];
                     }
+                    //std::cout << nb << ", " << gf[nb] << ", " << s << "," << s0 << ", " << m[0] << "," << m[1] << "\n";
                     if (m[0] + m[1] > 0.0) {
                         res += -dtpv*gf[nb]*m[0]*m[1]/(m[0] + m[1]);
                     }
@@ -965,42 +1044,67 @@ namespace Opm
             tm.mobility(s, cell, mobcell, dmobcell);
             for (int nb = 0; nb < 2; ++nb) {
                 if (nbcell[nb] != -1) {
-                    double m[2];
-                    double dm[2];
+                    double mob,dmob,mobupw;
                     if (gf[nb] < 0.0) {
-                        m[0] = mobcell[0];
-                        m[1] = tm.mob_[2*nbcell[nb] + 1];
-                        dm[0] = -dmobcell[0]; // Minus sign handles the dkrds 'bug' in SaturationPropsBasic::relperm
-                        dm[1] = tm.dmob_[2*nbcell[nb] + 1];
+                        mob = mobcell[0];
+                        mobupw = tm.mob_[2*nbcell[nb] + 1]; // Phase based upwind 
+                        dmob = dmobcell[0];
                     } else {
-                        m[0] = tm.mob_[2*nbcell[nb]];
-                        m[1] = mobcell[1];
-                        dm[0] = tm.dmob_[2*nbcell[nb]];
-                        dm[1] = dmobcell[1];
+                        mobupw = tm.mob_[2*nbcell[nb]]; // Phase based upwind 
+                        mob = mobcell[1];
+                        dmob = dmobcell[1];
                     }
-                    double msum = m[0] + m[1];
+                    double msum = mob + mobupw;
                     if (msum > 0.0) {
-                        //res += -dtpv*gf[nb]*m[0]*m[1]/msum;
-                        res += -dtpv*gf[nb]*( (dm[0]*m[0]+m[0]*dm[1])*msum - (dm[0]+dm[1])*m[0]*m[1] )/( msum*msum );
+                        res += -dtpv*gf[nb]*mobupw*dmob*(1-mob/msum)/msum;
                     }
                 }
             }
             return res;
 		}
+        /*double ds(double s) const
+        {
+			double res = 1;
+            double mobcell[2];
+            double dmobcell[2];
+            tm.mobility(s, cell, mobcell, dmobcell);
+            for (int nb = 0; nb < 2; ++nb) {
+                if (nbcell[nb] != -1) {
+                    double m[2];
+                    double dm[2];
+                    if (gf[nb] < 0.0) {
+                        m[0] = mobcell[0];
+                        m[1] = tm.mob_[2*nbcell[nb] + 1]; // The rhs is constant wrt s_w!
+                        dm[0] = dmobcell[0];
+                        dm[1] = 0; //tm.dmob_[2*nbcell[nb] + 1];
+                    } else {
+                        m[0] = tm.mob_[2*nbcell[nb]]; // The rhs is constant wrt s_w!
+                        m[1] = mobcell[1];
+                        dm[0] = 0; //tm.dmob_[2*nbcell[nb]];
+                        dm[1] = dmobcell[1];
+                    }
+                    double msum = m[0] + m[1];
+                    if (msum > 0.0) {
+                        res += -dtpv*gf[nb]*( (dm[0]*m[1]+m[0]*dm[1])*msum - (dm[0]+dm[1])*m[0]*m[1] )/( msum*msum );
+                    }
+                }
+            }
+            return res;
+		}*/
     };
 
     void TransportSolverTwophaseReorder::mobility(double s, int cell, double* mob, double* dmob) const
     {
         double sat[2] = { s, 1.0 - s };
-        double dmobtemp[4];
-        props_.relperm(1, sat, &cell, mob, dmobtemp);
+        double dkrds[4];
+        props_.relperm(1, sat, &cell, mob, dkrds);
         mob[0] /= visc_[0];
         mob[1] /= visc_[1];
         
         if(dmob != 0)
         {
-			dmob[0] = dmobtemp[0]/visc_[0];
-			dmob[1] = dmobtemp[3]/visc_[1];
+			dmob[0] = (dkrds[0] - dkrds[2])/visc_[0];
+			dmob[1] = (dkrds[1] - dkrds[3])/visc_[1];
 		}
     }
 
@@ -1038,6 +1142,40 @@ namespace Opm
     {
         const int cell = cells[pos];
         GravityResidual res(*this, cells, pos, gravflux);
+        
+        bool printgravres = true;
+        if(printgravres)
+        {
+			int ns = 100; //numberofsatpoints;
+			//for(int c = 0; c < grid_.number_of_cells; c++)
+			//{
+				std::ostringstream filename;
+				filename << "residual-data-cell-" << cell << ".data";
+				std::ofstream residual_file(filename.str().c_str());
+				residual_file.precision(15);
+				
+				residual_file << "dt, dtpv, s0, gf1, gf2, mob1_w, mob1_o, mob2_w, mob2_o, visc_w, visc_o \n";
+				std::string sp = ", ";
+				
+				residual_file<<this->dt_<<sp<<res.dtpv<<sp<<res.s0<<sp<<res.gf[0]<<sp<<res.gf[1]<<sp<<this->mob_[2*res.nbcell[0]]<<sp<<this->mob_[2*res.nbcell[0]+1]<<sp<<this->mob_[2*res.nbcell[1]]<<sp<<this->mob_[2*res.nbcell[1]+1]<<sp<<visc_[0]<<sp<<visc_[1]<<"\n";
+				residual_file.close();
+				
+				filename.str("");
+				filename.clear();
+				filename << "gravres-cell-" << cell << ".data";
+				residual_file.open(filename.str().c_str());
+				residual_file << "snp, Rnp, dRnp\n";
+				for(int i = 0; i < ns; i++)
+				{
+					double sat = (double)i/(ns-1);
+					residual_file<<sat<<sp<<res(sat)<<sp<<res.ds(sat)<<"\n";					
+				}
+				residual_file.close();
+			//}
+			//if(cell == grid_.number_of_cells-1)
+				//OPM_THROW(std::runtime_error, "Abort due to testing\n");
+		}
+        
         if (std::fabs(res(saturation_[cell])) > tol_) {
             int iters_used = 0;
             saturation_[cell] = RootFinder::solve(res, smin_[2*cell], smax_[2*cell], maxit_, tol_, iters_used);
@@ -1117,7 +1255,7 @@ namespace Opm
             mob_[2*c] /= mu[0];
             mob_[2*c + 1] /= mu[1];
             dmob_[2*c] = dmobtemp[4*c + 0]/mu[0];
-            dmob_[2*c+1] = dmobtemp[4*c + 3]/mu[1];
+            dmob_[2*c+1] = -dmobtemp[4*c + 3]/mu[1]; // Minus sign because of relperm 'bug'
         }
 
         // Set up other variables.

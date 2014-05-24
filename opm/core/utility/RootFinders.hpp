@@ -731,7 +731,8 @@ class PrintFunctor
         {
             double x = initial_guess + 1 + 2*tolerance;
             double xNew = initial_guess;
-            double fx = f(xNew);
+            double dfx = -1.0;
+            double fx = f(xNew,dfx);
             //double d2fw_inflec = visc_ratio*(2*inflec+1)*(inflec-1)*(inflec-1)+inflec*inflec*(2*inflec-3);
             //std::cout << "d2fw_inflec: " << d2fw_inflec << "\n";
             
@@ -779,7 +780,7 @@ class PrintFunctor
 				if (iterations_used > max_iter)
                     return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
                 
-				xNew = x - fx/f.ds(x); // Scalar Newton method
+				xNew = x - fx/dfx; // Scalar Newton method
 				xNew = std::max(std::min(xNew,1.0),0.0); // Restrict to interval [0,1]
 				if( (inflec-xNew)*(inflec-x) < 0 ) // Trust Region
 					xNew = inflec;
@@ -787,7 +788,7 @@ class PrintFunctor
 				if (verbose)
 					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(xNew),f.ds(xNew));
 				
-				fx = f(xNew);
+				fx = f(xNew,dfx);
 				if(isTestRun)
 					addPointToVector(xNew,fx,solution_path); // REMOVE FOR SPEED TESTS
 			}
@@ -810,6 +811,7 @@ class PrintFunctor
         {
             double x = initial_guess + 1 + 2*tolerance;
             double xNew = initial_guess;
+            double dfx = -1.0;
             double fx = f(xNew);
             
             if(isTestRun)
@@ -851,7 +853,7 @@ class PrintFunctor
                     return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
                 
 				// Scalar Newton's method
-				xNew = x - fx/f.ds(x);
+				xNew = x - fx/dfx;
 				
 				// Restrict to interval [0,1]
 				xNew = std::max(std::min(xNew,1.0),0.0);
@@ -863,7 +865,7 @@ class PrintFunctor
 				if (verbose)
 					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(x),f.ds(x));
 				
-				fx = f(xNew);
+				fx = f(xNew,dfx);
 				if(isTestRun)
 					addPointToVector(xNew,fx,solution_path); // REMOVE WHEN TESTING SPEED
 			}
@@ -937,12 +939,53 @@ class PrintFunctor
                       << "Max iterations: " << max_iter << "\n"
                       << "Error tolerance: " << tolerance << "\n"
                       << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
-            double fx = f(x);
+            double dfxds = 0.0;
+            double fx = f(x,dfxds);
             for(int i = 0; i < max_iter; i++, iterations_used++)
             {
-				xNew = x - fx/f.ds(x);
-				fx = f(xNew);
-				if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,fx,f.ds(x));
+				//xNew = x - fx/f.ds(x);
+				xNew = x - fx/dfxds;
+				fx = f(xNew,dfxds);
+				if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,fx,dfxds);
+				if(fabs(x-xNew) < tolerance || fabs(fx) < tolerance)
+				{
+					if(verbose) std::cout << "---------------------- End Newton iteration ------------------------\n";
+					return xNew;
+				}
+				x = xNew;
+			}
+			
+			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, fx);
+		}
+		
+		// Newton Raphson solver
+		template <class Functor>
+		inline static double solve(const Functor& f,
+								   const double initial_guess,
+								   const double f_init,
+								   const int max_iter,
+								   const double tolerance,
+								   bool verbose,
+								   int& iterations_used,
+								   bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
+        {
+            double x = initial_guess, xNew;
+            
+            if(verbose)
+            std::cout << "----------------------- Newton iteration ---------------------------\n"
+					  << "Initial guess: " << initial_guess << "\n"
+                      << "Max iterations: " << max_iter << "\n"
+                      << "Error tolerance: " << tolerance << "\n"
+                      << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
+            double fx = f_init; //f(x);
+            double dfds = f.ds(x);
+            for(int i = 0; i < max_iter; i++, iterations_used++)
+            {
+				xNew = x - fx/dfds;
+				fx = f(xNew,dfds);
+				if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,fx,f.ds(xNew));
+				if(isTestRun)
+					addPointToVector(xNew,fx,solution_path); // REMOVE FOR SPEED TESTS
 				if(fabs(x-xNew) < tolerance || fabs(fx) < tolerance)
 				{
 					if(verbose) std::cout << "---------------------- End Newton iteration ------------------------\n";
@@ -953,9 +996,7 @@ class PrintFunctor
 			
 			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, fx);
 		}
-		
-		// Newton Raphson solver
-		template <class Functor>
+		/*template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
 								   const double f_init,
@@ -990,7 +1031,7 @@ class PrintFunctor
 			}
 			
 			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, fx);
-		}
+		}*/
 	};
 
 

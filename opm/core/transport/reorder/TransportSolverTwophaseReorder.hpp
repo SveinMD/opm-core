@@ -183,6 +183,7 @@ namespace Opm
         struct Residual;
         struct ResidualParameters;
         double fracFlow(double s, int cell) const;
+        double fracFlow(double s, int cell, double & ds) const;
         double fracFlowDerivative(double s, int cell) const;
         double fracFlowDerivativeAlt(double s, int cell) const;
 	
