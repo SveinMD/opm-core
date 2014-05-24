@@ -329,7 +329,7 @@ namespace Opm
 		file << cell << " \t" << res.influx << " \t" << res.outflux << " \t" << res.dtpv << "\n";
 		file.close();*/
 		
-		time::StopWatch clock;
+		/*time::StopWatch clock;
 		clock.start();
 		for(int i = 0; i < 1000000; i++)
 		{
@@ -350,7 +350,7 @@ namespace Opm
 		clock.stop();
 		std::cout << "Using simultaneous calls " << clock.secsSinceStart() << " seconds \n";
 		
-		OPM_THROW(std::runtime_error,"Timing test!\n");
+		OPM_THROW(std::runtime_error,"Timing test!\n");*/
 		
 		bool generateResidualValues = false;
 		if(generateResidualValues)
