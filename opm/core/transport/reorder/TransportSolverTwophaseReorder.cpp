@@ -293,7 +293,10 @@ namespace Opm
         double operator()(double s, double & ds) const
         {
 			//std::cout << s << " " << s0 << " " << tm.dt_ << " " << dtpv << " " << outflux << " " << influx << "\n";
-            return s - s0 + dtpv*(outflux*tm.fracFlow(s, cell, ds) + influx);
+			double dfw_s = -1.0;
+			double fw_s = tm.fracFlow(s, cell, dfw_s);
+			ds = 1 + dtpv*outflux*dfw_s;
+            return s - s0 + dtpv*(outflux*fw_s + influx);
         }
         double ds(double s) const
         {
