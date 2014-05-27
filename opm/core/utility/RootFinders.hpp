@@ -423,7 +423,7 @@ namespace Opm
 			
 			if( (fl < 0.0) == (fh > 0.0) ) {
 				xl = x1; xh = x2;
-				ans = invalid_ans;
+				ans = (xl+xh)*0.5;
 				for(j = 1; j <= max_iter; j++) {
 					++iterations_used;
 					xm = 0.5*(xl+xh);
