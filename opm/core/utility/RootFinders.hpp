@@ -114,22 +114,21 @@ namespace Opm
     };
     
     template <class Functor>
-class PrintFunctor
-{
-	public:
-	//template <class Functor> 
-	static void printFunctorValues(const Functor& f, int n, const char * filename)
+	class PrintFunctor
 	{
-		double dx = 1.0/(n-1.0);
-		std::ofstream file; file.open(filename);
-		file << "x, \t y \n";
-		for (int i = 0; i < n; i++)
+		public:
+		static void printFunctorValues(const Functor& f, int n, const char * filename)
 		{
-			file << (double)dx*i << ", \t" << (double)f(dx*i) << "\n";
+			double dx = 1.0/(n-1.0);
+			std::ofstream file; file.open(filename);
+			file << "x, \t y \n";
+			for (int i = 0; i < n; i++)
+			{
+				file << (double)dx*i << ", \t" << (double)f(dx*i) << "\n";
+			}
+			file.close();
 		}
-		file.close();
-	}
-};
+	};
     
     void addPointToVector(double x, double y, std::vector<std::pair<double,double>> & vec)
     {
@@ -156,10 +155,14 @@ class PrintFunctor
 	}
     
     template <class ErrorPolicy = ThrowOnError>
-    class Brent //: public virtual BaseRootFinder
+    class Brent
     {
 		public:
 		
+		/// Brent's method for finding 
+		/// roots of scalar equations as described in 
+		/// Brent, 1973, "Algorithms for Minimization 
+		/// Without Derivatives".
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -171,100 +174,97 @@ class PrintFunctor
 								   bool isTestRun, 
 								   std::vector<std::pair<double,double>> & solution_path)
         {
-			double eps = 3.0e-8;
 			int iter;
-			double a=x1,b=x2,c=x2,d=a,e=a,min1,min2;
-			double fa=f(a),fb=f(b),fc=f(initial_guess),p,q,r,s,tol1,xm;
-			
-			if(fa*fc < 0)
+			double a=x1,b=x2,c=x2,d=a,e=a;
+			double fa=f(a),fb=f(b),fc=f(initial_guess),tol_mod,m,eps = 3.0e-15;
+			bool a_equals_c = false;
+			if((fa <= 0.0) == (fb <= 0.0))
+			{
+				if ( fabs(fa) <= tol) return a;
+				else if ( fabs(fb) <= tol) return b;
+				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
+			}
+			if((fa < 0.0) == (fc < 0.0))
 			{
 				b = initial_guess; fb = fc;
 			}
-			else if(fb*fc < 0)
+			else
 			{
+				a_equals_c = true;
 				a = initial_guess; fa = fc;
 			}
-			if(fa*fb >= 0)
-			{
-				if ( std::abs(fa) <= tol) return a;
-				else if ( std::abs(fb) <= tol) return b;
-				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
-			}
-			
 			fc = fb;
 			
 			if(isTestRun)	
-				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
+				addPointToVector(initial_guess,f(initial_guess),solution_path);
 			
 			for(iter = 1; iter <= max_iter; iter++)
 			{
 				++iterations_used;
-				if( (fb > 0.0 && fc > 0.0) || (fb < 0.0 && fc < 0.0)) 
+				if( (fb > 0.0) == (fc > 0.0) ) 
 				{
+					a_equals_c = true;
 					c = a; fc = fa;
 					e = d = b-a;
 				}
 				if( fabs(fc) < fabs(fb) ) 
 				{
+					a_equals_c = true;
 					a=b; 	b=c; 	c=a;
 					fa=fb; 	fb=fc; 	fc=fa;
 				}
-				tol1=2.0*eps*fabs(b)+0.5*tol;
-				//std::cout << tol1 << std::endl;
-				xm = 0.5*(c-b);
-				//if(fabs(xm) <= tol1 || fb == 0.0) return b;
-				if(fabs(xm) <= tol1 || fabs(fb) <= tol1) return b;
-				if(fabs(e) >= tol1 && fabs(fa) > fabs(fb)) 
+				tol_mod = 0.5*(eps*fabs(b)+tol);
+				m = 0.5*(c-b);
+				if(fabs(m) <= tol_mod || fabs(fb) <= tol_mod) return b;
+				if(fabs(e) < tol_mod && fabs(fa) <= fabs(fb)) 
 				{
-					s = fb/fa;
-					if(a == c)
+					d=m; e=d;
+				}
+				else
+				{
+					double p,q,r,s=fb/fa;
+					if(a_equals_c)
 					{
-						p=2.0*xm*s; q = 1.0-s;
+						p=2.0*m*s; q = 1.0-s;
 					}
 					else
 					{
 						q = fa/fc;
 						r = fb/fc;
-						p = s*(2.0*xm*q*(q-r)-(b-a)*(r-1.0));
+						p = s*(2.0*m*q*(q-r)-(b-a)*(r-1.0));
 						q=(q-1.0)*(r-1.0)*(s-1.0);
 					}
 					if(p > 0.0) q = -q;
-					p = fabs(p);
-					min1=3.0*xm*q-fabs(tol1*q);
-					min2=fabs(e*q);
-					if(2.0*p < (min1 < min2 ? min1 : min2)) 
+					else p = -p;
+					
+					double criteria = 3.0*m*q-fabs(tol_mod*q);
+					double criteria_alt = fabs(e*q);
+					criteria = (criteria < criteria_alt ? criteria : criteria_alt);
+					if(2.0*p < criteria) 
 					{
-						e=d; d = p/q;
+						e=d; d=p/q;
 					}
 					else
 					{
-						d=xm; e=d;
+						d=m; e=d;
 					}
 				}
-				else
-				{
-					d=xm; e=d;
-				}
 				a=b; fa=fb;
-				if(fabs(d) > tol1)
+				if(fabs(d) > tol_mod)
 					b += d;
 				else
-					b += sign(tol1,xm);
+					b += (m > 0 ? tol_mod : -tol_mod);
 				fb = f(b);
 				if(isTestRun)
-					addPointToVector(b,fb,solution_path); // REMOVE FOR SPEED TESTS
-				
-				/*if(iter > 30)
-				{
-					std::string file_name = "functor_values.data";
-					PrintFunctor<Functor>::printFunctorValues(f,100,file_name.c_str());
-					return ErrorPolicy::handleTooManyIterationsNewton(b, max_iter, f(b));
-				}*/
+					addPointToVector(b,fb,solution_path);
 			}
 			
 			return ErrorPolicy::handleTooManyIterationsNewton(a,b,max_iter);
 		}
 		
+		/// Brent's method for finding roots of scalar 
+		/// equations as described in Brent, 1973, 
+		/// "Algorithms for Minimization Without Derivatives".
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -278,22 +278,22 @@ class PrintFunctor
 			double xa = a;    double xb = b;    double xc = xa; double xs = 1.0; double xd = 1.0;
 			double fa = f(a); double fb = f(b); double fc = fa; double fs = f(initial_guess);
 			
-			if(fa*fs < 0)
-			{
-				xb = initial_guess;
-				fb = fs;
-			}
-			else if(fb*fs < 0)
-			{
-				xa = initial_guess;
-				fa = fs;
-			}
-			
-			if(fa*fb >= 0)
+			if((fa <= 0.0) == (fb <= 0))
 			{
 				if ( std::abs(fa) <= tolerance) return xa;
 				else if ( std::abs(fb) <= tolerance) return xb;
 				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
+			}
+			
+			if((fa < 0.0) == (fs < 0.0))
+			{
+				xb = initial_guess;
+				fb = fs;
+			}
+			else if((fb < 0.0) == (fs < 0.0))
+			{
+				xa = initial_guess;
+				fa = fs;
 			}
 			
 			if(verbose)
@@ -373,10 +373,14 @@ class PrintFunctor
 	};
 
 	template <class ErrorPolicy = ThrowOnError>
-	class Ridder //: public virtual BaseRootFinder
+	class Ridder
 	{
 		public:
 		
+		/// Ridders' method for finding 
+		/// roots of scalar equations as described in 
+		/// Ridders, 1973, "A new Algorithm for Computing 
+		/// a Single Root of a Real Continuous Function"
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -393,7 +397,7 @@ class PrintFunctor
 			double ans,fh,fl,fm,fnew,s,xh,xl,xm,xnew=initial_guess,f_init=f(initial_guess);
 			
 			if(isTestRun)
-				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
+				addPointToVector(initial_guess,f(initial_guess),solution_path);
 			
 			if(verbose)
 				std::cout << "----------------------- Ridder's Method iteration ---------------------------\n"
@@ -405,47 +409,44 @@ class PrintFunctor
             if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
             
 			fh = f(x2);
-			if(fh*f_init < 0)
+			if( (fh < 0.0) == (f_init < 0.0) )
+			{
+				fl = f(x1);
+				fh = f_init;
+				x2 = initial_guess;
+			}
+			else
 			{
 				fl = f_init;
 				x1 = initial_guess;
 			}
-			else
-			{
-				fl = f(x1);
-				if(fl*f_init < 0)
-				{
-					fh = f_init;
-					x2 = initial_guess;
-				}
-			}
 			
-			if( fl*fh < 0.0 ) {
+			if( (fl < 0.0) == (fh > 0.0) ) {
 				xl = x1; xh = x2;
 				ans = invalid_ans;
 				for(j = 1; j <= max_iter; j++) {
 					++iterations_used;
 					xm = 0.5*(xl+xh);
 					fm = f(xm);
-					s = sqrt(fm*fm-fl*fh); //newt(0.5,fm*fm-fl*fh,3); // Note: The iterative method returns the reciprocal root!
-					if(s == 0.0) return ans; //if(s == 0.0) return ans; // if(fabs(s) <= tolerance) return ans; // 
-					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s); // *s); //
+					s = sqrt(fm*fm-fl*fh);
+					if(s == 0.0) return ans; 
+					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s);
 					if(isTestRun)
-						addPointToVector(xnew,f(xnew),solution_path); // REMOVE FOR SPEED TESTS
+						addPointToVector(xnew,f(xnew),solution_path);
 					if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
 					if (fabs(xnew-ans) <= tolerance) return xnew;
 					ans = xnew;
 					fnew = f(ans);
-					if(fabs(fnew) <= tolerance) return ans; // if(fnew == 0.0) return ans;
-					if(sign(fm,fnew) != fm) {
+					if(fabs(fnew) <= tolerance) return ans;
+					if((fm > 0.0) == (fnew < 0.0)) {
 						xl = xm;  fl = fm;
 						xh = ans; fh = fnew;
 					}
-					else if(sign(fl,fnew) != fl) {
-						xh = ans; fh = fnew;
-					}
-					else if(sign(fh,fnew) != fh) {
+					else if((fl < 0.0) == (fnew < 0.0)) {
 						xl = ans; fl = fnew;
+					}
+					else if((fh < 0.0) == (fnew < 0.0)) {
+						xh = ans; fh = fnew;
 					}
 					else {
 						ErrorPolicy::handleBracketingFailure(xl,xh,fl,fh);
@@ -458,16 +459,21 @@ class PrintFunctor
 			}
 			else {
 				if(isTestRun)
-					addPointToVector(x1,f(x1),solution_path); // REMOVE FOR SPEED TESTS
-				if(fabs(fl) <= tolerance) return x1; // if(fl == 0.0) return x1;
+					addPointToVector(x1,f(x1),solution_path);
+				if(fabs(fl) <= tolerance) return x1;
 				if(isTestRun)
-					addPointToVector(x2,f(x2),solution_path); // REMOVE FOR SPEED TESTS
-				if(fabs(fh) <= tolerance) return x2; // if(fh == 0.0) return x2;
+					addPointToVector(x2,f(x2),solution_path);
+				if(fabs(fh) <= tolerance) return x2;
 				return ErrorPolicy::handleBracketingFailure(x1,x2,fl,fh);
 			}
 			return 0.0; // Unreachable
 		}
 		
+		/// Ridders' method for finding 
+		/// roots of scalar equations as described in 
+		/// Ridders, 1973, "A new Algorithm for Computing 
+		/// a Single Root of a Real Continuous Function"
+		/// Returns the root value f(x) in the reference variable fnew
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -480,11 +486,10 @@ class PrintFunctor
 								   std::vector<std::pair<double,double>> & solution_path, double & fnew)
 		{
 			double invalid_ans = -1;
-			int j;
 			double ans,fh,fl,fm,s,xh,xl,xm,xnew=initial_guess,f_init=f(initial_guess);
 			
 			if(isTestRun)
-				addPointToVector(initial_guess,f(initial_guess),solution_path); // REMOVE FOR SPEED TESTS
+				addPointToVector(initial_guess,f(initial_guess),solution_path);
 			
 			if(verbose)
 				std::cout << "----------------------- Ridder's Method iteration ---------------------------\n"
@@ -496,49 +501,44 @@ class PrintFunctor
             if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
             
 			fh = f(x2);
-			if(fh*f_init < 0)
+			if( (fh < 0.0) == (f_init < 0.0) )
+			{
+				fl = f(x1);
+				fh = f_init;
+				x2 = initial_guess;
+			}
+			else
 			{
 				fl = f_init;
 				x1 = initial_guess;
 			}
-			else
-			{
-				fl = f(x1);
-				if(fl*f_init < 0)
-				{
-					fh = f_init;
-					x2 = initial_guess;
-				}
-			}
 			
-			if( fl*fh < 0.0 ) {
+			if( (fl < 0.0) == (fh > 0.0) ) {
 				xl = x1; xh = x2;
 				ans = invalid_ans;
-				for(j = 1; j <= max_iter; j++) {
+				for(int j = 1; j <= max_iter; j++) {
 					++iterations_used;
 					xm = 0.5*(xl+xh);
-					fm = f(xm); fnew = fm;
-					s = sqrt(fm*fm-fl*fh); //newt(0.5,fm*fm-fl*fh,3); // Note: The iterative method returns the reciprocal root!
-					if(s == 0.0) return ans; //if(s == 0.0) return ans; // if(fabs(s) <= tolerance) return ans; // 
-					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s); // *s); //
+					fm = f(xm);
+					s = sqrt(fm*fm-fl*fh);
+					if(s == 0.0) return ans; 
+					xnew = xm+(xm-xl)*((fl >= fh ? 1.0 : -1.0)*fm/s);
 					if(isTestRun)
-						addPointToVector(xnew,f(xnew),solution_path); // REMOVE FOR SPEED TESTS
+						addPointToVector(xnew,f(xnew),solution_path);
 					if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,xnew,f(xnew));
-					if (fabs(xnew-ans) <= tolerance) return xnew; // Note: This return statement gives an 
-					// inaccurate fnew value, which will give the wrong update in the 
-					// first Newton iteration of the Globalized Newton procedure! 
+					if (fabs(xnew-ans) <= tolerance) return xnew;
 					ans = xnew;
 					fnew = f(ans);
-					if(fabs(fnew) <= tolerance) return ans; // if(fnew == 0.0) return ans;
-					if(sign(fm,fnew) != fm) {
+					if(fabs(fnew) <= tolerance) return ans;
+					if((fm > 0.0) == (fnew < 0.0)) {
 						xl = xm;  fl = fm;
 						xh = ans; fh = fnew;
 					}
-					else if(sign(fl,fnew) != fl) {
-						xh = ans; fh = fnew;
-					}
-					else if(sign(fh,fnew) != fh) {
+					else if((fl < 0.0) == (fnew < 0.0)) {
 						xl = ans; fl = fnew;
+					}
+					else if((fh < 0.0) == (fnew < 0.0)) {
+						xh = ans; fh = fnew;
 					}
 					else {
 						ErrorPolicy::handleBracketingFailure(xl,xh,fl,fh);
@@ -546,136 +546,29 @@ class PrintFunctor
 					if(fabs(xh-xl) <= tolerance)
 						return ans;
 				}
-				if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
 				return ErrorPolicy::handleTooManyIterationsNewton(xnew, max_iter, f(xnew));
 			}
 			else {
 				if(isTestRun)
-					addPointToVector(x1,f(x1),solution_path); // REMOVE FOR SPEED TESTS
-				if(fabs(fl) <= tolerance) return x1; // if(fl == 0.0) return x1;
+					addPointToVector(x1,f(x1),solution_path);
+				if(fabs(fl) <= tolerance) return x1;
 				if(isTestRun)
-					addPointToVector(x2,f(x2),solution_path); // REMOVE FOR SPEED TESTS
-				if(fabs(fh) <= tolerance) return x2; // if(fh == 0.0) return x2;
+					addPointToVector(x2,f(x2),solution_path);
+				if(fabs(fh) <= tolerance) return x2;
 				return ErrorPolicy::handleBracketingFailure(x1,x2,fl,fh);
 			}
 			return 0.0; // Unreachable
 		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double initial_guess,
-								   const double a, const double b,
-								   const int max_iter,
-								   const double tolerance,
-								   bool verbose,
-								   int& iterations_used,
-								   bool dummy)
-		{
-			double s = 0.0;
-			double x = initial_guess;
-			double xa = a;
-			double xb = b;
-			double fa = f(xa); double fb = f(xb);
-			double fnew = f(x);
-			double xnew,xc,fc;
-			
-			if(fnew*fa < 0)
-				xb = x;
-			else if(fnew*fb < 0)
-				xa = x;
-			
-			if(fa*fb >= 0)
-			{
-				if (std::abs(fa) <= tolerance) return xa;
-				else if (std::abs(fb) <= tolerance) return xb;
-				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
-			}
-			
-			/*if(verbose)
-				std::cout << "----------------------- Ridder's Method iteration ---------------------------\n"
-						<< "Initial guess: " << initial_guess << "\n"
-						<< "Max iterations: " << max_iter << "\n"
-						<< "Error tolerance: " << tolerance << "\n"
-						<< "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
-            
-            if (verbose) printf("%d\t%8.3e\t%8.2e\n",iterations_used,x,f(x));
-			*/
-			x = -10; // A saturation value always outside bracket
-			for(int i = 0; i < max_iter; i++)
-			{
-				++iterations_used;
-				xc = 0.5*(xa+xb);
-				fc = f(xc);
-				s = sqrt(fc*fc-fa*fb); // newt(2.4,fc*fc-fa*fb,6); //
-				//std::cout << "Root: " << s << ", " << sqrt(fc*fc-fa*fb) << /*"," << f(0) << "," << f(1) << "," << f(xc)  << */ "\n"; // Note: The iterative method returns the reciprocal root!
-				//return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-				if (s == 0.0)
-				{
-					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
-					return x;
-				}
-				xnew = xc + (xc-xa)*((fa >= fb ? 1.0 : -1.0)*fc/s); // *s); // Consider changing 1/s to a multiplication
-				if( std::abs(xnew-x) <= tolerance ) 
-				{
-					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
-					return x;
-				}
-				x = xnew;
-				fnew = f(x);
-				if( std::abs(fnew) <= tolerance )
-				{
-					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
-					return x;
-				}
-				if(fc*fnew < 0.0)
-				{
-					xa = xc; fa = fc;
-					xb = x; fb = fnew;
-				}
-				else if(fa*fnew < 0.0)
-				{
-					xb = x; fb = fnew;
-				}
-				else if(fb*fnew < 0.0)
-				{
-					xa = x; fa = fnew;
-				}
-				else
-					ErrorPolicy::handleBracketingFailure(xa,xb,fc,fnew);
-					
-				if(xb < xa)
-				{
-					double temp = xa;
-					xa = xb;
-					xb = temp;
-					temp = fa;
-					fa = fb;
-					fb = temp;
-				}
-				
-				if( std::abs(xb-xa) <= tolerance)
-				{
-					//if(verbose) std::cout << "----------------------- End Ridder's Method iteration ---------------------------\n";
-					return x;
-				}
-				
-				//if (verbose) printf("%d\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,x,f(x),f.ds(x));
-			}
-			
-			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-		}
-		
-		
 	};
 	
-	// Newton Raphson Trust region solver
     template <class ErrorPolicy = ThrowOnError>
     class NewtonRaphsonTrustRegion
     {
 		public:
 		
-		// Trust region solver
-		// Uses supplied first and second derivatives for trust region scheme
+		/// Trust region solver
+		/// Assumes quadratic relative permeability 
+		/// functions in s to compute derivatives.
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -716,9 +609,9 @@ class PrintFunctor
             return x;
 		}
 		
-		// Darcy flow trust region solver
-		// Uses supplied viscosity ratio for trust region scheme
-		// Reduced number of function calls by approximating dfw2(xNew)
+		/// Trust region solver
+		/// Uses supplied viscosity ratio for trust region scheme
+		/// Requires a precomputed f_w inflection point as argument.
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -798,8 +691,10 @@ class PrintFunctor
             return xNew;
 		}
 		
-		// Darcy flow trust region solver
-		// Uses supplied viscosity ratio for trust region scheme
+		/// Trust region solver
+		/// Uses supplied viscosity ratio for trust region scheme
+		/// Assumes quadratic relative permeability 
+		/// functions in s to compute derivatives.
 		template <class Functor>
 		inline static double solveApprox(const Functor& f,
 								   const double initial_guess,
@@ -891,38 +786,13 @@ class PrintFunctor
 			double xm2 = pow(x-1,2.0);
 			return 2*M*( M*(2*x+1)*xm2 + x2*(2*x-3) )/pow(M*xm2 + x2, 3.0);
 		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double a,
-                                   const double b,
-								   const int max_iter,
-								   const double tolerance,
-								   int& iterations_used)
-		{
-			double initial_guess = (a+b)/2.0;
-			return solve(f,initial_guess,max_iter,tolerance,false,iterations_used);
-		}
-		
-		template <class Functor>
-		inline static double solve(const Functor& f,
-								   const double initial_guess,
-								   const double a,
-                                   const double b,
-								   const int max_iter,
-								   const double tolerance,
-								   int& iterations_used)
-		{
-			return solve(f,initial_guess,max_iter,tolerance,false,iterations_used);
-		}
 	};
 
-	// Newton Raphson solver
     template <class ErrorPolicy = ThrowOnError>
     class NewtonRaphson
     {
 		public:
-		// Newton Raphson solver
+		/// Newton Raphson solver
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -958,7 +828,9 @@ class PrintFunctor
 			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, fx);
 		}
 		
-		// Newton Raphson solver
+		/// Newton Raphson solver
+		/// If isTestRun is true, the solution 
+		/// updates are returned in a vector
 		template <class Functor>
 		inline static double solve(const Functor& f,
 								   const double initial_guess,
@@ -1033,7 +905,6 @@ class PrintFunctor
 			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, fx);
 		}*/
 	};
-
 
     template <class ErrorPolicy = ThrowOnError>
     class RegulaFalsi
