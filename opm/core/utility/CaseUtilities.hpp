@@ -53,13 +53,13 @@ string replaceDot(string str);
 string replaceDot(double num);
 void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, 
 							   int i, int num_cells, const RootFinderType solver_type, 
-							   const double comp_length, const double time_step);
+							   const double comp_length, const double time_step, const double visc_ratio);
 void parseArguments(int argc, char ** argv, double & muw, double & muo, 
 					bool & verbose, double & time_step_days, double & comp_length_days,
 					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, RootFinderType & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
-					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z);
+					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z, bool & initBottomTop, bool & initLeftRight);
 void constructCacheFileName(std::ostringstream & filename, int layer, 
 							double xstart, double xsize, int xnum, 
 							double ystart, double ysize, int ynum);

@@ -84,7 +84,7 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, RootFinderType & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
-					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z)
+					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z, bool & initBottomTop, bool & initLeftRight)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
@@ -186,6 +186,14 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 			printIterations = true;
 			nprint = std::atoi(argv[++i]);
 		}
+		else if(std::string(argv[i]) == "--init")
+		{
+			initBottomTop = initLeftRight = false;
+			if(std::string(argv[++i]) == "bt")
+				initBottomTop = true;
+			else
+				initLeftRight = true;
+		}
 		else
 			std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 	}
@@ -282,17 +290,18 @@ void printStateDataToVTKFile(std::string vtkfilename, Opm::TwophaseState state, 
 	Opm::writeVtkData(grid, dm, vtkfile);
 }
 
-void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, int i, int num_cells, const RootFinderType solver_type, const double comp_length, const double time_step)
+void printIterationsFromVector(string execName, const Opm::TransportSolverTwophaseReorder & transport_solver, int i, int num_cells, const RootFinderType solver_type, const double comp_length, const double time_step, const double visc_ratio)
 {
 	std::vector<int> iterations = transport_solver.getReorderIterations();
 	std::ostringstream iterfilename;
 	
 	string str_comp_length = replaceStrChar(std::to_string(comp_length), ".", '_');
 	string str_time_step = replaceStrChar(std::to_string(time_step), ".", '_');
+	string str_visc_rat = replaceStrChar(std::to_string(visc_ratio), ".",'_');
 	
 	// Set filename and open
 	iterfilename.str(""); 
-	iterfilename << execName << "-iterations-s-" << getIdentifierFromSolverType(solver_type) << "-T-" << str_comp_length << "-t-" << str_time_step << "-" << std::setw(3) << std::setfill('0') << i << ".txt";
+	iterfilename << execName << "-iterations-s-" << getIdentifierFromSolverType(solver_type) << "-T-" << str_comp_length << "-t-" << str_time_step << "-m-" << str_visc_rat << "-" << std::setw(3) << std::setfill('0') << i << ".data";
 	std::ofstream file; file.open(iterfilename.str().c_str());
 	for ( int i = 0; i < num_cells; i++)
 	{
