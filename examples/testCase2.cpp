@@ -55,6 +55,7 @@ try
 	double grav_x = 0;
 	double grav_y = 0;
 	double grav_z = 0;
+	double tol = 1e-9;
 	
 	bool verbose = false;
 	bool printIterations = false;
@@ -74,7 +75,7 @@ try
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, is_inhom_perm,
-					   srcVol, sinkVol, grav_x, grav_y, grav_z, initBottomTop, initLeftRight);
+					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, initBottomTop, initLeftRight);
 	
 	if(verbose)
 		std::cout << "----------------- Initializing problem -------------------\n";
@@ -132,7 +133,7 @@ try
     std::vector<double> porevol;
     Opm::computePorevolume(grid, props.porosity(), porevol);
     
-    const double tolerance = 1e-9;
+    const double tolerance = tol;
     const int max_iterations = 50;
     //Opm::TransportSolverTwophaseReorder transport_solver(grid, shadow_props.usePermeability(&perm[0]), grav, tolerance, max_iterations, solver_type, verbose);
 	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose);
@@ -141,7 +142,7 @@ try
     const double dt = time_step_days*day;
     const int num_time_steps = comp_length/dt;
     nprint = std::min(nprint,num_time_steps);
-    std::cout << "Time step length: " << dt << std::endl;
+    std::cout << "Time step length: " << dt << "\n";
 	
 	TwophaseState state;
     state.init(grid, 2);
