@@ -176,23 +176,32 @@ namespace Opm
         {
 			int iter;
 			double a=x1,b=x2,c=x2,d=a,e=a;
-			double fa=f(a),fb=f(b),fc=f(initial_guess),tol_mod,m,eps = 3.0e-15;
+			double fa=f(a),fb=f(b),fc=f(initial_guess),tol_mod,m,eps = 1.0e-16;
 			bool a_equals_c = false;
+			
+			if(verbose)
+				std::cout << "----------------------- Brent's Method iteration ---------------------------\n"
+						<< "Initial guess: " << initial_guess << "\n"
+						<< "Max iterations: " << max_iter << "\n"
+						<< "Error tolerance: " << tol << "\n"
+						<< "# iter.\tx\t\tf(x) \n";
+						
 			if((fa <= 0.0) == (fb <= 0.0))
 			{
+				if (verbose) printf("%d\t%8.3e\t%8.3e \n",iterations_used,fabs(fa) <= tol ? a : b , fabs(fa) <= tol ? fa : fb );
 				if ( fabs(fa) <= tol) return a;
 				else if ( fabs(fb) <= tol) return b;
 				else return ErrorPolicy::handleBracketingFailure(a,b,fa,fb);
 			}
 			if((fa < 0.0) == (fc < 0.0))
 			{
-				b = initial_guess; fb = fc;
+				a = initial_guess; fa = fc;
 			}
 			else
 			{
-				a_equals_c = true;
-				a = initial_guess; fa = fc;
+				b = initial_guess; fb = fc;
 			}
+			c = b;
 			fc = fb;
 			
 			if(isTestRun)	
@@ -209,16 +218,17 @@ namespace Opm
 				}
 				if( fabs(fc) < fabs(fb) ) 
 				{
-					a_equals_c = true;
+					a_equals_c = true; 
 					a=b; 	b=c; 	c=a;
 					fa=fb; 	fb=fc; 	fc=fa;
 				}
-				tol_mod = 0.5*(eps*fabs(b)+tol);
+				tol_mod = 2.0*eps*fabs(b)+0.5*tol;
 				m = 0.5*(c-b);
+				if (verbose) printf("%d\t%8.3e\t%8.3e\n",iterations_used,b,f(b));
 				if(fabs(m) <= tol_mod || fabs(fb) <= tol_mod) return b;
-				if(fabs(e) < tol_mod && fabs(fa) <= fabs(fb)) 
+				if(fabs(e) < tol_mod || fabs(fa) <= fabs(fb)) 
 				{
-					d=m; e=d;
+					d=m; e=m;
 				}
 				else
 				{
@@ -235,7 +245,7 @@ namespace Opm
 						q=(q-1.0)*(r-1.0)*(s-1.0);
 					}
 					if(p > 0.0) q = -q;
-					else p = -p;
+					else p = fabs(p); //else p = -p;
 					
 					double criteria = 3.0*m*q-fabs(tol_mod*q);
 					double criteria_alt = fabs(e*q);
@@ -246,10 +256,11 @@ namespace Opm
 					}
 					else
 					{
-						d=m; e=d;
+						d=m; e=m;
 					}
 				}
 				a=b; fa=fb;
+				a_equals_c = false;
 				if(fabs(d) > tol_mod)
 					b += d;
 				else
@@ -272,8 +283,7 @@ namespace Opm
 								   const int max_iter,
 								   const double tolerance,
 								   bool verbose,
-								   int & iterations_used,
-								   bool dummy)
+								   int & iterations_used)
         {
 			double xa = a;    double xb = b;    double xc = xa; double xs = 1.0; double xd = 1.0;
 			double fa = f(a); double fb = f(b); double fc = fa; double fs = f(initial_guess);
@@ -392,7 +402,6 @@ namespace Opm
 								   bool isTestRun, 
 								   std::vector<std::pair<double,double>> & solution_path)
 		{
-			double invalid_ans = -1;
 			int j;
 			double ans,fh,fl,fm,fnew,s,xh,xl,xm,xnew=initial_guess,f_init=f(initial_guess);
 			
