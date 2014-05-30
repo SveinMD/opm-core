@@ -680,11 +680,15 @@ namespace Opm
 				++iterations_used;
 				x = xNew;
 				if (iterations_used > max_iter)
+				{
+					//PrintFunctor<Functor>::printFunctorValues(f, 100, "residual_fail.data");
                     return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
+				}
                 
 				xNew = x - fx/dfx; // Scalar Newton method
 				xNew = std::max(std::min(xNew,1.0),0.0); // Restrict to interval [0,1]
-				if( (inflec-xNew)*(inflec-x) < 0 ) // Trust Region
+				//if( (inflec-xNew)*(inflec-x) < 0 ) // Trust Region
+				if( (xNew < inflec) == (x > inflec) ) // Trust Region
 					xNew = inflec;
 				
 				if (verbose)
