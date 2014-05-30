@@ -343,9 +343,9 @@ void constructCacheFileName(std::ostringstream & filename, int layer, double xst
 	filename << "permeabilities-z-" << layer << "-Kx-" << replaceStrChar(boost::lexical_cast<std::string>(xstart),"_",'.') << "-" << replaceStrChar(boost::lexical_cast<std::string>(xsize),"_",'.') << "-" << xnum << "-Ky-" << replaceStrChar(boost::lexical_cast<std::string>(ystart),"_",'.') << "-" << replaceStrChar(boost::lexical_cast<std::string>(ysize),"_",'.') << "-" << ynum << ".cache";
 }
 
-void constructCacheFileName(std::ostringstream & filename, int layer, int xstart, int xnum, int ystart, int ynum)
+void constructCacheFileName(std::ostringstream & filename, int xstart, int xnum, int ystart, int ynum, int zstart, int znum)
 {
-	filename << "permeabilities-z-" << layer << "-Kx-" << xstart << "-" << xnum << "-Ky-" << ystart << "-" << ynum << ".cache";
+	filename << "permeabilities-Kx-" << xstart << "-" << xnum << "-Ky-" << ystart << "-" << ynum << "-Kz-" << zstart << "-" << znum << ".cache";
 }
 
 bool readPermDataFromCache(std::vector<double> & perm, std::ifstream & cachefile, std::string cachefilename)
@@ -428,13 +428,50 @@ bool readPermDataFromRawFile(string perm_file_name, std::vector<double> & Kx, st
 	}
 }
 
-void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, std::vector<double> Kz, int layer, int xstart, int xnum, int ystart, int ynum, double buildCache)
+void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, std::vector<double> Kz, 
+							  int xstart, int xnum, int ystart, int ynum, int zstart, int znum, double buildCache)
 {
 	std::ofstream file;
 	if(buildCache)
 	{
 		std::ostringstream filename;
-		constructCacheFileName(filename,layer,xstart,xnum,ystart,ynum);
+		constructCacheFileName(filename,xstart,xnum,ystart,ynum,zstart,znum);
+		file.open(filename.str().c_str());
+	}
+	int xdim = 60; int ydim = 220; //int zdim = 85;
+	for(int l = 0; l < znum; l++)
+	{
+		int layerInd = l*xdim*ydim; // Index of first value in the layer
+		int regionRowInd = xdim*ystart; // Index of the first element in the first row containing elements in the region, relative to selected layer
+		for(int i = 0; i < ynum; i++) // Iterate over number of cells in y-dir of region
+		{
+			int colInd = xdim*i + xstart; // Index of first element of current row in region, relative to starting index of first element in the first row with elements in selected region
+			for(int j = 0; j < xnum; j++) // Iterate over number of cells in x-dir of region
+			{
+				int index = layerInd + regionRowInd + colInd + j;
+				
+				perm.push_back(Kx[index]); perm.push_back(0); 			perm.push_back(0);
+				perm.push_back(0);		   perm.push_back(Ky[index]);	perm.push_back(0);
+				perm.push_back(0);		   perm.push_back(0);			perm.push_back(Kz[index]);
+				
+				if(buildCache)
+					file << Kx[index] << "\t" << 0 		   << "\t" << 0 		<< "\t"
+					     << 0         << "\t" << Ky[index] << "\t" << 0 		<< "\t"
+					     << 0         << "\t" << 0 		   << "\t" << Kz[index] << "\n";
+			}
+		}
+	}
+	file.close();
+}
+
+void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, std::vector<double> Kz, 
+							  int layer, int xstart, int xnum, int ystart, int ynum, double buildCache)
+{
+	std::ofstream file;
+	if(buildCache)
+	{
+		std::ostringstream filename;
+		constructCacheFileName(filename,xstart,xnum,ystart,ynum,layer,1);
 		file.open(filename.str().c_str());
 	}
 	int xdim = 60; int ydim = 220;
@@ -473,7 +510,7 @@ void buildPermData(string perm_file_name, std::vector<double> & perm,
 		std::cout << "Initializing permeability table ... \n";
 	std::ostringstream cachefilename;
 	cachefilename.str("");
-	constructCacheFileName(cachefilename,layer,xstart,xnum,ystart,ynum);
+	constructCacheFileName(cachefilename,xstart,xnum,ystart,ynum,layer,1);
 	std::ifstream cachefile; cachefile.open(cachefilename.str().c_str());
 	if(cachefile.is_open())
 	{
@@ -497,6 +534,43 @@ void buildPermData(string perm_file_name, std::vector<double> & perm,
 		}
 		
 		buildPermMatrixForRegion(perm,Kx,Ky,Kz,layer,xstart,xnum,ystart,ynum,true);
+	}
+	
+	if(verbose)
+		std::cout << "Permeability table initialized. \n";
+}
+
+void buildPermData(string perm_file_name, std::vector<double> & perm,
+				   int xstart, int xnum, int ystart, int ynum, int zstart, int znum, bool verbose)
+{
+	if(verbose)
+		std::cout << "Initializing permeability table ... \n";
+	std::ostringstream cachefilename;
+	cachefilename.str("");
+	constructCacheFileName(cachefilename,xstart,xnum,ystart,ynum,zstart,znum);
+	std::ifstream cachefile; cachefile.open(cachefilename.str().c_str());
+	if(cachefile.is_open())
+	{
+		if(verbose)
+			std::cout << "Reading permeabilities from cache " << cachefilename.str() << " ... \n";
+		
+		readPermDataFromCache(perm, cachefile, cachefilename.str());
+	}
+	else
+	{
+		if(verbose)
+			std::cout << "Reading permeabilities from file ...\n";
+			
+		std::vector<double> Kx,Ky,Kz;
+		readPermDataFromRawFile(perm_file_name,Kx,Ky,Kz);
+		
+		if(verbose)
+		{
+			std::cout << "Finished reading permeabilities\n";
+			std::cout << "Building permeability table ...\n";
+		}
+		
+		buildPermMatrixForRegion(perm,Kx,Ky,Kz,xstart,xnum,ystart,ynum,zstart,znum,true);
 	}
 	
 	if(verbose)

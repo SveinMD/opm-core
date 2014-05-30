@@ -64,18 +64,21 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 void constructCacheFileName(std::ostringstream & filename, int layer, 
 							double xstart, double xsize, int xnum, 
 							double ystart, double ysize, int ynum);
-void constructCacheFileName(std::ostringstream & filename, int layer, 
-							int xstart, int xnum, int ystart, int ynum);
+void constructCacheFileName(std::ostringstream & filename, int xstart, 
+							int xnum, int ystart, int ynum,	int zstart, int znum);
 bool readPrintPointsFromFile(std::string filename, std::vector<int> & print_points);
 bool readPermDataFromCache(std::vector<double> & perm, 
 						   std::ifstream & cachefile, std::string cachefilename = "");
 bool readPermDataFromRawFile(string perm_file_name, std::vector<double> & Kx,
 							 std::vector<double> & Ky, std::vector<double> & Kz);
-void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, 
-							  std::vector<double> Ky, std::vector<double> Kz, int layer, int xstart, 
-							  int xnum, int ystart, int ynum, double buildCache);
+void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, std::vector<double> Kz,
+							  int layer, int xstart, int xnum, int ystart, int ynum, double buildCache);
+void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx, std::vector<double> Ky, std::vector<double> Kz, 
+							  int xstart, int xnum, int ystart, int ynum, int zstart, int znum, double buildCache);
 void buildPermData(string perm_file_name, std::vector<double> & perm, 
 				   int layer, int xstart, int xnum, int ystart, int ynum, bool verbose);
+void buildPermData(string perm_file_name, std::vector<double> & perm, 
+				   int xstart, int xnum, int ystart, int ynum, int zstart, int znum, bool verbose);
 void buildPermData(string perm_file_name, std::vector<double> & perm, int layer,
 				   double xpos, double ypos, double xsize, double ysize, int nxcells,
 				   int nycells, double xsizeperm, double ysizeperm, int nxcellsperm,
