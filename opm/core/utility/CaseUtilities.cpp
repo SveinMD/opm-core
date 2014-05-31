@@ -146,7 +146,7 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 				if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
 					perm_file_name = std::string(argv[++i]);
 					
-				std::cout << "Using inhomogeneous permeability in layer " << layer << " at position (x,y) = (" << xpos << "," << ypos << ")\n";
+				std::cout << "Using inhomogeneous permeability starting in layer " << layer << " at position (x,y) = (" << xpos << "," << ypos << ")\n";
 			}
 			else
 			{
@@ -163,7 +163,7 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 			ydim = std::atoi(argv[++i]);
 			zdim = std::atoi(argv[++i]);
 			
-			std::cout << "Using " << xdim << "x" << ydim << " cells on a " << xsize << " m by " << ysize << " m domain.\n";
+			std::cout << "Using " << xdim << "x" << ydim << "x" << zdim << " cells on a " << xsize << " m x " << ysize << " m x " << zsize << " domain.\n";
 		}
 		else if(std::string(argv[i]) == "-i")
 		{
@@ -306,7 +306,10 @@ void printIterationsFromVector(string execName, const Opm::TransportSolverTwopha
 	
 	// Set filename and open
 	iterfilename.str(""); 
-	iterfilename << execName << "-iterations-s-" << getIdentifierFromSolverType(solver_type) << "-T-" << str_comp_length << "-t-" << str_time_step << "-m-" << str_visc_rat << "-" << std::setw(3) << std::setfill('0') << i << ".data";
+	iterfilename << execName << "-iterations-s-" << getIdentifierFromSolverType(solver_type) 
+							 << "-T-" << str_comp_length 
+							 << "-t-" << str_time_step 
+							 << "-m-" << str_visc_rat << "-" << std::setw(3) << std::setfill('0') << i << ".data";
 	std::ofstream file; file.open(iterfilename.str().c_str());
 	for ( int i = 0; i < num_cells; i++)
 	{
@@ -439,7 +442,7 @@ void buildPermMatrixForRegion(std::vector<double> & perm, std::vector<double> Kx
 		file.open(filename.str().c_str());
 	}
 	int xdim = 60; int ydim = 220; //int zdim = 85;
-	for(int l = 0; l < znum; l++)
+	for(int l = zstart; l < zstart+znum; l++)
 	{
 		int layerInd = l*xdim*ydim; // Index of first value in the layer
 		int regionRowInd = xdim*ystart; // Index of the first element in the first row containing elements in the region, relative to selected layer

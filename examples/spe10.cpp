@@ -38,10 +38,11 @@ int main (int argc, char ** argv)
 try
 {
 	int nx = 20; int ny = 20; int nz = 1;
-	int nxperm = 60; int nyperm = 220; int nzperm = 85;
 	const int NPRINT = 100;
 	int nprint = NPRINT;
+	int xpos = 0, ypos = 0, zpos = 0;
 	
+	double xpos_double = 0.0, ypos_double = 0.0;
 	double dx = 10.0; double dy = 10.0; double dz = 10.0;
 	double muw = 1; double muo = 1;
 	double time_step_days = 0.1;
@@ -65,23 +66,25 @@ try
 	
 	using namespace Opm;
 	
-	int idummy; double ddummy; bool bdummy;
+	double ddummy; bool bdummy;
 	if(argc > 1)
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
-					   print_points_file_name, perm_file_name, idummy, ddummy, ddummy, ddummy, bdummy,
+					   print_points_file_name, perm_file_name, zpos, xpos_double, ypos_double, ddummy, bdummy,
 					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy);
+	xpos = (int)xpos_double;
+	ypos = (int)ypos_double;
 	
 	if(verbose)
 		std::cout << "----------------- Initializing problem -------------------\n";
 	
 	std::vector<double> perm;
-	buildPermData(perm_file_name,perm,0,nxperm,0,nyperm,0,nzperm,verbose);
+	buildPermData(perm_file_name,perm,xpos,nx,ypos,ny,zpos,nz,verbose);
 	
     GridManager grid_manager(nx, ny, nz, dx, dy, dz);
     const UnstructuredGrid& grid = *grid_manager.c_grid();
     int num_cells = grid.number_of_cells;
-    
+
     int num_phases = 2;
     using namespace Opm::unit;
     using namespace Opm::prefix;
@@ -102,14 +105,14 @@ try
     std::vector<double> omega;
 
 	double injectedFluidAbsolute = srcVol;
-	double poreVolume = dz*dx*dy*porosity/(nx*ny);
+	double poreVolume = dz*dx*dy*porosity/(nx*ny*nz);
 	double injectedFluidPoreVol = injectedFluidAbsolute/poreVolume;
     std::vector<double> src(num_cells, 0.0);
     src[0] = injectedFluidPoreVol;
     src[num_cells-1] = -injectedFluidPoreVol;
 
     FlowBCManager bcs;
-
+	
     LinearSolverUmfpack linsolver;
     IncompPropertiesInterface * prop_pointer;
 	prop_pointer = (IncompPropertiesInterface *) &shadow_props.usePermeability(&perm[0]);
