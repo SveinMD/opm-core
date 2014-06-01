@@ -111,7 +111,7 @@ try
     //src[0] = injectedFluidPoreVol;
     //src[num_cells-1] = -injectedFluidPoreVol;
 
-	for(int l/*ayer*/ = zpos; l < zpos + nz; l++)
+	for(int l/*ayer*/ = 0; l < nz; l++)
 	{
 		int cell_src = l*nx*ny;
 		int cell_sink = cell_src + nx*ny - 1;
