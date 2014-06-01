@@ -108,8 +108,16 @@ try
 	double poreVolume = dz*dx*dy*porosity/(nx*ny*nz);
 	double injectedFluidPoreVol = injectedFluidAbsolute/poreVolume;
     std::vector<double> src(num_cells, 0.0);
-    src[0] = injectedFluidPoreVol;
-    src[num_cells-1] = -injectedFluidPoreVol;
+    //src[0] = injectedFluidPoreVol;
+    //src[num_cells-1] = -injectedFluidPoreVol;
+
+	for(int l/*ayer*/ = zpos; l < zpos + nz; l++)
+	{
+		int cell_src = l*nx*ny;
+		int cell_sink = cell_src + nx*ny - 1;
+		src[cell_src] = injectedFluidPoreVol;
+		src[cell_sink] = -injectedFluidPoreVol;
+	}
 
     FlowBCManager bcs;
 	
