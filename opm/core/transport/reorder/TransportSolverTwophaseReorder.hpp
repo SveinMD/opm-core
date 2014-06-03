@@ -117,6 +117,7 @@ namespace Opm
         const std::vector<int>& getReorderIterations() const;
         double getInflectionPoint();
 		void setdt(double dt) {dt_ = dt;};
+		bool useInitialGuessApproximation_;
     private:
 		void initInflectionPoint_old(const double M);
 		// Complex functions

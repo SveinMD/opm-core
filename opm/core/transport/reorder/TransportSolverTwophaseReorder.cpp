@@ -319,20 +319,10 @@ namespace Opm
     void TransportSolverTwophaseReorder::solveSingleCell(const int cell)
     {
         Residual res(*this, cell);
-        // const double r0 = res(saturation_[cell]);
-        // if (std::fabs(r0) < tol_) {
-        //     return;
-        // }
+
         int iters_used = 0;
-        // saturation_[cell] = modifiedRegulaFalsi(res, smin_[2*cell], smax_[2*cell], maxit_, tol_, iters_used);
-        
-        //saturation_[cell] = RootFinder::solve(res, saturation_[cell], 0.0, 1.0, maxit_, tol_, iters_used); // Original. Commented 04.02.14 - Svein
-        
-        /*std::ofstream file; file.open("flux_values.dat",std::ios::app);
-		file << cell << " \t" << res.influx << " \t" << res.outflux << " \t" << res.dtpv << "\n";
-		file.close();*/
-		
-		/*time::StopWatch clock;
+
+        /*time::StopWatch clock;
 		clock.start();
 		for(int i = 0; i < 1000000; i++)
 		{
@@ -352,9 +342,8 @@ namespace Opm
 		}
 		clock.stop();
 		std::cout << "Using simultaneous calls " << clock.secsSinceStart() << " seconds \n";
-		
 		OPM_THROW(std::runtime_error,"Timing test!\n");*/
-		
+        
 		bool generateResidualValues = false;
 		if(generateResidualValues)
 		{
@@ -480,8 +469,67 @@ namespace Opm
 			OPM_THROW(std::runtime_error, "Abort due to testing\n");
 		}
         
-        selectSolverAndSolve(cell,saturation_[cell],res,iters_used,false,solutionPath);
+        double s0_mod = saturation_[cell];
+        if(this->useInitialGuessApproximation_)
+        {
+			//std::cout << "s0:" << res.s0;
+			if(res.influx == 0.0)
+				s0_mod = res.s0;
+			else
+			{
+				double rq = res.outflux/res.influx;
+				double M = visc_[0]/visc_[1];
+				/*if(fabs(rq) == 1 && M < 1) s0_mod = 0.5;
+				else if(fabs(rq) == 1) s0_mod = 1;
+				else
+				{
+					double rqm = (rq+1)/M;
+					s0_mod = ( 1.0 - sqrt(fabs(rqm)) )/(1+rqm);
+					//std::cout << "rq: " << rq << ", M: " << M << ", s0_mod: " << s0_mod << std::endl;
+				}*/
+				if(/*fabs(rq) != 1 &&*/ fabs(res.outflux*res.dtpv) >= 100)
+				{
+					double rqm = (rq+1)/M;
+					s0_mod = ( 1.0 - sqrt(fabs(rqm)) )/(1+rqm);
+					//std::cout << "rq: " << rq << ", M: " << M << ", s0_mod: " << s0_mod << std::endl;
+				}
+			}
+			//std::cout << " s0_new: " << res.s0 << "\n";
+		}
         
+        bool printFluxValues = false;
+        if(printFluxValues)
+        {
+			/*std::ofstream file; 
+			file.open("flux_values.dat"); //,std::ios::app);
+			file << "cell  \t influx \t outflux \t dtpv\n";
+			for(int i = 0; i < this->grid_.number_of_cells; i++)
+			{
+				Residual res1(*this, i);
+				file << i << " \t" << res1.influx << " \t" << res1.outflux << " \t" << res1.dtpv << "\n";
+			}
+			file.close();
+			OPM_THROW(std::runtime_error,"Printed flux values for testing\n");
+			*/
+			std::ofstream file; 
+			file.open("flux_values.dat",std::ios::app);
+			file << cell << " \t" << res.influx << " \t" << res.outflux << " \t" << res.dtpv << "\t" << res.s0 << "\t" << s0_mod << "\n";
+		}
+		
+        std::ofstream file; 
+        bool printSatValues = false;
+        if(printSatValues)
+        {
+			file.open("saturation_values.dat",std::ios::app);
+			file << "s0_mod: " << s0_mod << ", s: " << res.s0 << " -> ";
+			//s0_mod = saturation_[cell];
+		}
+        selectSolverAndSolve(cell,s0_mod,res,iters_used,false,solutionPath);
+        if(printSatValues)
+        {
+			file << saturation_[cell] << "\n";
+			file.close();
+		}
         // add if it is iteration on an out loop
         reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
