@@ -62,6 +62,7 @@ try
 	bool is_inhom_perm = false;
 	bool initBottomTop=false, initLeftRight = false;
 	bool solve_gravity_column = false;
+	bool bdummy;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
 	
@@ -75,7 +76,7 @@ try
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, is_inhom_perm,
-					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, initBottomTop, initLeftRight);
+					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, initBottomTop, initLeftRight, bdummy);
 	
 	if(verbose)
 		std::cout << "----------------- Initializing problem -------------------\n";
