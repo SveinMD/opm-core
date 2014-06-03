@@ -85,7 +85,7 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z, 
-					double & tolerance, bool & initBottomTop, bool & initLeftRight)
+					double & tolerance, bool & initBottomTop, bool & initLeftRight, bool & initSatApprox)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
@@ -199,6 +199,8 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 		{
 			tolerance = std::atof(argv[++i]);
 		}
+		else if(std::string(argv[i]) == "--initApprox")
+			initSatApprox = true;
 		else
 			std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 	}
@@ -291,7 +293,7 @@ void printStateDataToVTKFile(std::string vtkfilename, Opm::TwophaseState state, 
 	std::ofstream vtkfile(vtkfilename.c_str());
 	Opm::DataMap dm;
 	dm["saturation"] = &state.saturation();
-	dm["pressure"] = &state.pressure();
+	//dm["pressure"] = &state.pressure();
 	Opm::writeVtkData(grid, dm, vtkfile);
 }
 

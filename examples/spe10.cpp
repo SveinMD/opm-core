@@ -57,6 +57,7 @@ try
 	bool verbose = false;
 	bool printIterations = false;
 	bool solve_gravity_column = false;
+	bool useInitialGuessApproximation = false;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
 	
@@ -71,7 +72,7 @@ try
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, zpos, xpos_double, ypos_double, ddummy, bdummy,
-					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy);
+					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation);
 	xpos = (int)xpos_double;
 	ypos = (int)ypos_double;
 	
@@ -135,7 +136,8 @@ try
     const double tolerance = tol;
     const int max_iterations = 50;
 	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose);
-
+	transport_solver.useInitialGuessApproximation_ = useInitialGuessApproximation;
+	
     const double comp_length = comp_length_days*day;
     const double dt = time_step_days*day;
     const int num_time_steps = comp_length/dt;
@@ -194,6 +196,9 @@ try
 			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days, viscosity[0]/viscosity[1]);
 			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_type, comp_length_days, time_step_days, i);
 		}
+		
+		//if(i==1)
+		//return 0;
     }
     clock.stop();
     std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";
