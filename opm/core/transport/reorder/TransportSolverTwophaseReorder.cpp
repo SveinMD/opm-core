@@ -490,7 +490,8 @@ namespace Opm
 				if(/*fabs(rq) != 1 &&*/ fabs(res.outflux*res.dtpv) >= 100)
 				{
 					double rqm = (rq+1)/M;
-					s0_mod = ( 1.0 - sqrt(fabs(rqm)) )/(1+rqm);
+					if(rqm == -1) s0_mod = 0.5;
+					else s0_mod = ( 1.0 - sqrt(fabs(rqm)) )/(1+rqm);
 					//std::cout << "rq: " << rq << ", M: " << M << ", s0_mod: " << s0_mod << std::endl;
 				}
 			}
@@ -514,26 +515,29 @@ namespace Opm
 			std::ofstream file; 
 			file.open("flux_values.dat",std::ios::app);
 			file << cell << " \t" << res.influx << " \t" << res.outflux << " \t" << res.dtpv << "\t" << res.s0 << "\t" << s0_mod << "\n";
-		}
-		
-        std::ofstream file; 
-        bool printSatValues = false;
-        if(printSatValues)
-        {
-			file.open("saturation_values.dat",std::ios::app);
-			file << "s0_mod: " << s0_mod << ", s: " << res.s0 << " -> ";
-			//s0_mod = saturation_[cell];
-		}
-        selectSolverAndSolve(cell,s0_mod,res,iters_used,false,solutionPath);
-        if(printSatValues)
-        {
-			file << saturation_[cell] << "\n";
 			file.close();
 		}
-        // add if it is iteration on an out loop
+		
+        selectSolverAndSolve(cell,s0_mod,res,iters_used,false,solutionPath);
+        
+        if(printFluxValues)
+        {
+			std::ofstream file; 
+			file.open("saturation_values.dat",std::ios::app);
+			double stemp = saturation_[cell];
+			double rmod = fabs(stemp-s0_mod);
+			double r0 = fabs(stemp-res.s0);
+			file << std::left << std::setw(8) << res.s0 << "\t" 
+				 << std::left << std::setw(8) << s0_mod << "\t" 
+				 << std::left << std::setw(8) << stemp << "\t" 
+				 << std::left << std::setw(8) << r0-rmod << "\t" 
+				 << std::left << std::setw(8) << rmod << "," 
+				 << std::left << std::setw(8) << r0 << "\n";
+			file.close();
+		}
+		
         reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
-        //fractionalflowderivative_[cell] = fracFlowDerivative(saturation_[cell], cell);
     }
     
     void TransportSolverTwophaseReorder::selectSolverAndSolve(const int cell, double s0, TransportSolverTwophaseReorder::Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
