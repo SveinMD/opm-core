@@ -93,7 +93,7 @@ print("Runing " + path.basename(filename) + " " + str(n_runs) + " time(s) with s
 
 #v_dt = [0.1]
 #v_dt = [10,25,50,75,100,150,200,250,300, 400, 500, 600, 700, 800, 900, 1000]
-v_dt = [1,2,4,6,8,10,12,14]
+v_dt = [1,2,4,6,8,10,12,15]
 #v_dt = [1,5,10,20,30,40,50,75,100,125,150]
 
 arguments = [filename,"-s",solver,"--dim",sizex,sizey,sizez,nx,ny,nz,"--perm","i",layer,posx,posy,"-i",srcVol,"-m",muw,muo,"-T",end_time,"-t"]
