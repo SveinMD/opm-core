@@ -59,6 +59,7 @@ try
 	bool printIterations = false;
 	bool printFluxData = false;
 	bool useInitialGuessApproximation = false;
+	bool printVTU = false;
 	bool bdummy;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
@@ -71,7 +72,7 @@ try
 	
 	if(argc > 1)
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
-					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
+					   dx, dy, dz, nx, ny, nz, solver_type, printVTU, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, bdummy,
 					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxData);
 	
@@ -175,7 +176,8 @@ try
 		{
 			it++;
 			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days, viscosity[0]/viscosity[1]);
-			printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_type, comp_length_days, time_step_days, i);
+			if(printVTU)
+				printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_type, comp_length_days, time_step_days, i);
 		}
     }
     clock.stop();
