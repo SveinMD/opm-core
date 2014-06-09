@@ -57,6 +57,8 @@ try
 	
 	bool verbose = false;
 	bool printIterations = false;
+	bool printFluxData = false;
+	bool useInitialGuessApproximation = false;
 	bool bdummy;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
@@ -71,7 +73,7 @@ try
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, bdummy,
-					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, bdummy);
+					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxData);
 	
 	if(verbose)
 		std::cout << "----------------- Initializing problem -------------------\n";
@@ -79,6 +81,8 @@ try
     GridManager grid_manager(nx, ny, nz, dx, dy, dz);
     const UnstructuredGrid& grid = *grid_manager.c_grid();
     int num_cells = grid.number_of_cells;
+    
+    //std::cout << grid.cell_volumes[0] << std::endl;
     
     int num_phases = 2;
     using namespace Opm::unit;
@@ -96,9 +100,12 @@ try
     
     const double *grav = 0;
     std::vector<double> omega;
+    
+    std::vector<double> porevol;
+    Opm::computePorevolume(grid, props.porosity(), porevol);
 
 	double injectedFluidAbsolute = srcVol; // m^3
-	double poreVolume = dz*dx*dy*porosity/(nx*ny);
+	double poreVolume = porevol[0];
 	double injectedFluidPoreVol = injectedFluidAbsolute/poreVolume;
 	
     std::vector<double> src(num_cells, 0.0);
@@ -113,12 +120,9 @@ try
 	
     WellState well_state;
     
-    std::vector<double> porevol;
-    Opm::computePorevolume(grid, props.porosity(), porevol);
-    
     const double tolerance = tol;
     const int max_iterations = 50;
-	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose);
+	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose, useInitialGuessApproximation, printFluxData);
 
     const double comp_length = comp_length_days*day;
     const double dt = time_step_days*day;
@@ -158,9 +162,11 @@ try
     for (int i = 0; i < num_time_steps; ++i) {
 		if(verbose)
 			std::cout << "*** Solving step " << i+1 << " of " << num_time_steps << " ***\n";
+			
 		if(verbose)
 			std::cout << "Solving pressure system ...\n";
         psolver.solve(dt, state, well_state);
+        
         if(verbose)
 			std::cout << "Solving transport system:\n";
         transport_solver.solve(&porevol[0], &src[0], dt, state);
