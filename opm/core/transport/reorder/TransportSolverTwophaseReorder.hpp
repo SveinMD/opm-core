@@ -82,7 +82,9 @@ namespace Opm
                                        const double tol,
                                        const int maxit,
                                        RootFinderType solver_type,
-                                       bool verbose);
+                                       bool verbose,
+                                       bool useInitialGuessApproximation,
+                                       bool printFluxValues);
 		
         // Virtual destructor.
         virtual ~TransportSolverTwophaseReorder();
@@ -117,7 +119,6 @@ namespace Opm
         const std::vector<int>& getReorderIterations() const;
         double getInflectionPoint();
 		void setdt(double dt) {dt_ = dt;};
-		bool useInitialGuessApproximation_;
     private:
 		void initInflectionPoint_old(const double M);
 		// Complex functions
@@ -193,6 +194,9 @@ namespace Opm
 		
 		void constructFileNameFromParams(std::ostringstream & filename, std::string solver_type, double M, double dtpv, double in, double out, double s0);
 		void selectSolverAndSolve(const int cell, double s0, Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path);
+		
+		bool useInitialGuessApproximation_;
+		bool printFluxValues_;
     };
 
 } // namespace Opm

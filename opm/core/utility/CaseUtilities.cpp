@@ -66,7 +66,7 @@ namespace Opm
 		map.insert(rfs_map::value_type(BrentType,"Brent"));
 		map.insert(rfs_map::value_type(RiddersType,"Ridders"));
 		map.insert(rfs_map::value_type(NewtonTrustRegionType,"Newton Trust Region"));
-		map.insert(rfs_map::value_type(NewtonTrustRegionApproxType,"Appeoximate Newton Trust Region"));
+		map.insert(rfs_map::value_type(NewtonTrustRegionApproxType,"Approximate Newton Trust Region"));
 		map.insert(rfs_map::value_type(GlobalizedNewtonType,"Globalized Newton"));
 		map.insert(rfs_map::value_type(NewtonRaphsonType,"Newton Raphson"));
 		return map;
@@ -81,11 +81,11 @@ namespace Opm
 
 void parseArguments(int argc, char ** argv, double & muw, double & muo, 
 					bool & verbose, double & time_step_days, double & comp_length_days,
-					double & xsize, double & ysize, double & zsize, int & xdim, int & ydim, int & zdim, RootFinderType & solver_type, 
+					double & dx, double & dy, double & dz, int & nx, int & ny, int & nz, RootFinderType & solver_type, 
 					bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z, 
-					double & tolerance, bool & initBottomTop, bool & initLeftRight, bool & initSatApprox)
+					double & tolerance, bool & initBottomTop, bool & initLeftRight, bool & initSatApprox, bool & printFluxData)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
@@ -114,14 +114,14 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 		else if(std::string(argv[i]) == "-d")
 		{
 			i++;
-			xdim = std::atof(argv[i]);
-			ydim = xdim;
+			nx = std::atof(argv[i]);
+			ny = nx;
 			if(i+1 < argc && !boost::starts_with(std::string(argv[i+1]),"-"))
 			{ 
 				i++;
-			    ydim = std::atoi(argv[i]);
+			    ny = std::atoi(argv[i]);
 			}
-			std::cout << "Using " << xdim << " and " << ydim << " cell(s) in the x- and y-direction, respectively\n";
+			std::cout << "Using " << nx << " and " << ny << " cell(s) in the x- and y-direction, respectively\n";
 		}
 		else if(std::string(argv[i]) == "-m")
 		{
@@ -156,14 +156,14 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 		}
 		else if(std::string(argv[i]) == "--dim")
 		{
-			xsize = std::atof(argv[++i]);
-			ysize = std::atof(argv[++i]);
-			zsize = std::atof(argv[++i]);
-			xdim = std::atoi(argv[++i]);
-			ydim = std::atoi(argv[++i]);
-			zdim = std::atoi(argv[++i]);
+			dx = std::atof(argv[++i]);
+			dy = std::atof(argv[++i]);
+			dx = std::atof(argv[++i]);
+			nx = std::atoi(argv[++i]);
+			ny = std::atoi(argv[++i]);
+			nz = std::atoi(argv[++i]);
 			
-			std::cout << "Using " << xdim << "x" << ydim << "x" << zdim << " cells on a " << xsize << " m x " << ysize << " m x " << zsize << " domain.\n";
+			std::cout << "Using " << nx << "x" << ny << "x" << nz << " cells of size " << dx << " m x " << dy << " m x " << dz << ".\n";
 		}
 		else if(std::string(argv[i]) == "-i")
 		{
@@ -201,6 +201,8 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 		}
 		else if(std::string(argv[i]) == "--initApprox")
 			initSatApprox = true;
+		else if(std::string(argv[i]) == "--flux")
+			printFluxData = true;
 		else
 			std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 	}
@@ -322,7 +324,6 @@ void printIterationsFromVector(string execName, const Opm::TransportSolverTwopha
 
 string replaceDot(double num)
 {
-	//return replaceDot(boost::lexical_cast<std::string>(num));
 	return replaceDot(std::to_string(num));
 }
 
@@ -345,12 +346,21 @@ string replaceStrChar(string str, const string & replace, char ch)
 
 void constructCacheFileName(std::ostringstream & filename, int layer, double xstart, double xsize, int xnum, double ystart, double ysize, int ynum)
 {
-	filename << "permeabilities-z-" << layer << "-Kx-" << replaceStrChar(boost::lexical_cast<std::string>(xstart),"_",'.') << "-" << replaceStrChar(boost::lexical_cast<std::string>(xsize),"_",'.') << "-" << xnum << "-Ky-" << replaceStrChar(boost::lexical_cast<std::string>(ystart),"_",'.') << "-" << replaceStrChar(boost::lexical_cast<std::string>(ysize),"_",'.') << "-" << ynum << ".cache";
+	filename << "permeabilities-z-" << layer 
+			 << "-Kx-" << replaceDot(boost::lexical_cast<std::string>(xstart)) 
+			 << "-" << replaceDot(boost::lexical_cast<std::string>(xsize)) 
+			 << "-" << xnum 
+			 << "-Ky-" << replaceDot(boost::lexical_cast<std::string>(ystart)) 
+			 << "-" << replaceDot(boost::lexical_cast<std::string>(ysize)) 
+			 << "-" << ynum << ".cache";
 }
 
 void constructCacheFileName(std::ostringstream & filename, int xstart, int xnum, int ystart, int ynum, int zstart, int znum)
 {
-	filename << "permeabilities-Kx-" << xstart << "-" << xnum << "-Ky-" << ystart << "-" << ynum << "-Kz-" << zstart << "-" << znum << ".cache";
+	filename << "permeabilities-Kx-" << xstart << "-" << xnum 
+			 << "-Ky-" << ystart << "-" << ynum 
+			 << "-Kz-" << zstart << "-" << znum 
+			 << ".cache";
 }
 
 bool readPermDataFromCache(std::vector<double> & perm, std::ifstream & cachefile, std::string cachefilename)

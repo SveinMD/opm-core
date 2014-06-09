@@ -58,6 +58,7 @@ try
 	bool printIterations = false;
 	bool solve_gravity_column = false;
 	bool useInitialGuessApproximation = false;
+	bool printFluxValues = false;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
 	
@@ -72,7 +73,7 @@ try
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, zpos, xpos_double, ypos_double, ddummy, bdummy,
-					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation);
+					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxValues);
 	xpos = (int)xpos_double;
 	ypos = (int)ypos_double;
 	
@@ -104,14 +105,15 @@ try
     const double *grav = &grav_arr[0];
     solve_gravity_column = ( fabs(density[1]-density[0]) > 0.0 ) && ( fabs(grav_x)+fabs(grav_y)+fabs(grav_z) > 0.0 );
     std::vector<double> omega;
+    
+    std::vector<double> porevol;
+    Opm::computePorevolume(grid, props.porosity(), porevol);
 
 	double injectedFluidAbsolute = srcVol;
-	double poreVolume = dz*dx*dy*porosity/(nx*ny*nz);
-	double injectedFluidPoreVol = injectedFluidAbsolute/poreVolume;
+	double injectedFluidPoreVol = injectedFluidAbsolute/porevol[0];
     std::vector<double> src(num_cells, 0.0);
     //src[0] = injectedFluidPoreVol;
     //src[num_cells-1] = -injectedFluidPoreVol;
-
 	for(int l/*ayer*/ = 0; l < nz; l++)
 	{
 		int cell_src = l*nx*ny;
@@ -130,13 +132,9 @@ try
 	
     WellState well_state;
     
-    std::vector<double> porevol;
-    Opm::computePorevolume(grid, props.porosity(), porevol);
-    
     const double tolerance = tol;
     const int max_iterations = 50;
-	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose);
-	transport_solver.useInitialGuessApproximation_ = useInitialGuessApproximation;
+	Opm::TransportSolverTwophaseReorder transport_solver(grid, *prop_pointer, grav, tolerance, max_iterations, solver_type, verbose, useInitialGuessApproximation, printFluxValues);
 	
     const double comp_length = comp_length_days*day;
     const double dt = time_step_days*day;

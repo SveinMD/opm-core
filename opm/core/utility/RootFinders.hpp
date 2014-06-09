@@ -772,10 +772,10 @@ namespace Opm
 								   const bool verbose,
 								   int& iterations_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
         {
-            double x = initial_guess + 1 + 2*tolerance;
+            double x = initial_guess + 10*tolerance;
             double xNew = initial_guess;
             double dfx = -1.0;
-            double fx = f(xNew);
+            double fx = f(xNew,dfx);
             
             if(isTestRun)
 				addPointToVector(xNew,fx,solution_path); // REMOVE WHEN TESTING SPEED
@@ -808,7 +808,7 @@ namespace Opm
                       << "Error tolerance: " << tolerance << "\n"
                       << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
-            while (std::abs(fx) > tolerance && fabs(x-xNew) > tolerance)
+            while (fabs(fx) > tolerance && fabs(x-xNew) > tolerance)
             {
 				++iterations_used;
 				x = xNew;
@@ -822,7 +822,7 @@ namespace Opm
 				xNew = std::max(std::min(xNew,1.0),0.0);
 				
 				// Trust Region
-				if(dfw2(xNew,visc_ratio)*dfw2(x,visc_ratio) < 0.0)
+				if( (dfw2(xNew,visc_ratio) < 0.0) != (dfw2(x,visc_ratio) < 0.0) )
 					xNew = (xNew+x)/2.0;
 				
 				if (verbose)

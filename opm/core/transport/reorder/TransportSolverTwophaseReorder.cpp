@@ -26,6 +26,7 @@
 #include <opm/core/utility/RootFinders.hpp>
 #include <opm/core/utility/miscUtilities.hpp>
 #include <opm/core/pressure/tpfa/trans_tpfa.h>
+#include <opm/core/utility/Units.hpp>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string.hpp>
@@ -58,7 +59,9 @@ namespace Opm
                                                                    const double tol,
                                                                    const int maxit,
                                                                    RootFinderType solver_type,
-                                                                   bool verbose)
+                                                                   bool verbose,
+                                                                   bool useInitialGuessApproximation,
+                                                                   bool printFluxValues)
         : grid_(grid),
           props_(props),
           tol_(tol),
@@ -77,7 +80,9 @@ namespace Opm
         , ia_upw_(grid.number_of_cells + 1, -1),
           ja_upw_(grid.number_of_faces, -1),
           ia_downw_(grid.number_of_cells + 1, -1),
-          ja_downw_(grid.number_of_faces, -1)
+          ja_downw_(grid.number_of_faces, -1),
+          useInitialGuessApproximation_(useInitialGuessApproximation),
+          printFluxValues_(printFluxValues)
 #endif
     {
         if (props.numPhases() != 2) {
@@ -470,7 +475,7 @@ namespace Opm
 		}
         
         double s0_mod = saturation_[cell];
-        if(this->useInitialGuessApproximation_)
+        if(this->useInitialGuessApproximation_ || printFluxValues_)
         {
 			//std::cout << "s0:" << res.s0;
 			if(res.influx == 0.0)
@@ -498,8 +503,7 @@ namespace Opm
 			//std::cout << " s0_new: " << res.s0 << "\n";
 		}
         
-        bool printFluxValues = false;
-        if(printFluxValues)
+        if(printFluxValues_)
         {
 			/*std::ofstream file; 
 			file.open("flux_values.dat"); //,std::ios::app);
@@ -512,26 +516,53 @@ namespace Opm
 			file.close();
 			OPM_THROW(std::runtime_error,"Printed flux values for testing\n");
 			*/
+			double cP = Opm::prefix::centi*Opm::unit::Poise;
+			std::ostringstream base;
+			base << std::fixed << std::setprecision(0);
+			base << "flux_values-s-" << getIdentifierFromSolverType(this->solver_type_)
+			         << "-dt-" << this->dt_/Opm::unit::day
+			         << "-m-" << visc_[0]/cP
+			         << "-" << visc_[1]/cP;
+			std::ostringstream filename;
+			filename << replaceDot(base.str()) << ".dat";
 			std::ofstream file; 
-			file.open("flux_values.dat",std::ios::app);
-			file << cell << " \t" << res.influx << " \t" << res.outflux << " \t" << res.dtpv << "\t" << res.s0 << "\t" << s0_mod << "\n";
+			file.open(filename.str().c_str(),std::ios::app);
+			file << cell << " \t" 
+				 << res.influx << " \t" 
+				 << res.outflux << " \t" 
+				 << res.dtpv << "\t" 
+				 << res.s0 << "\t" 
+				 << s0_mod << "\n";
 			file.close();
+			if(!this->useInitialGuessApproximation_)
+				s0_mod = saturation_[cell];
+				
+			//std::cout << "dt: " << this->dt_ << "pv: " << this->porevolume_[cell] << "dtpv: " << res.dtpv << "\n";
 		}
 		
         selectSolverAndSolve(cell,s0_mod,res,iters_used,false,solutionPath);
         
-        if(printFluxValues)
+        if(printFluxValues_)
         {
-			std::ofstream file; 
-			file.open("saturation_values.dat",std::ios::app);
 			double stemp = saturation_[cell];
 			double rmod = fabs(stemp-s0_mod);
 			double r0 = fabs(stemp-res.s0);
+			double cP = Opm::prefix::centi*Opm::unit::Poise;
+			std::ostringstream base;
+			base << std::fixed << std::setprecision(0);
+			base << "saturation_values-s-" << getIdentifierFromSolverType(this->solver_type_)
+			         << "-dt-" << this->dt_/Opm::unit::day
+			         << "-m-" << visc_[0]/cP
+			         << "-" << visc_[1]/cP;
+			std::ostringstream filename;
+			filename << replaceDot(base.str()) << ".dat";
+			std::ofstream file; 
+			file.open(filename.str().c_str(),std::ios::app);
 			file << std::left << std::setw(8) << res.s0 << "\t" 
 				 << std::left << std::setw(8) << s0_mod << "\t" 
 				 << std::left << std::setw(8) << stemp << "\t" 
 				 << std::left << std::setw(8) << r0-rmod << "\t" 
-				 << std::left << std::setw(8) << rmod << "," 
+				 << std::left << std::setw(8) << rmod << "\t" 
 				 << std::left << std::setw(8) << r0 << "\n";
 			file.close();
 		}
