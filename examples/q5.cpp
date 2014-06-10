@@ -60,6 +60,7 @@ try
 	bool printFluxData = false;
 	bool useInitialGuessApproximation = false;
 	bool printVTU = false;
+	bool time_pressure_solver = true;
 	bool bdummy;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
@@ -72,7 +73,7 @@ try
 	
 	if(argc > 1)
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
-					   dx, dy, dz, nx, ny, nz, solver_type, printVTU, printIterations, nprint, 
+					   dx, dy, dz, nx, ny, nz, solver_type, time_pressure_solver, printVTU, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, bdummy,
 					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxData);
 	
@@ -159,7 +160,9 @@ try
 	
 	std::vector<int>::iterator it = print_points.begin();
 	time::StopWatch clock;
-	clock.start();
+	double cputime = 0;
+	if(time_pressure_solver)
+		clock.start();
     for (int i = 0; i < num_time_steps; ++i) {
 		if(verbose)
 			std::cout << "*** Solving step " << i+1 << " of " << num_time_steps << " ***\n";
@@ -170,8 +173,15 @@ try
         
         if(verbose)
 			std::cout << "Solving transport system:\n";
+		if(!time_pressure_solver)
+			clock.start();
         transport_solver.solve(&porevol[0], &src[0], dt, state);
-        
+        if(!time_pressure_solver)
+		{
+			clock.stop();
+			cputime += clock.secsSinceStart();
+		}
+		
         if(printIterations && it != print_points.end() && *it == i)
 		{
 			it++;
@@ -180,8 +190,12 @@ try
 				printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_type, comp_length_days, time_step_days, i);
 		}
     }
-    clock.stop();
-    std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";
+    if(time_pressure_solver)
+    {
+		clock.stop();
+		cputime = clock.secsSinceStart();
+	}
+    std::cout << "Problem solved in " << cputime << " seconds \n";
 }
 catch (const std::exception &e) {
     std::cerr << "Program threw an exception: " << e.what() << "\n";

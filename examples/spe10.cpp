@@ -60,6 +60,7 @@ try
 	bool useInitialGuessApproximation = false;
 	bool printFluxValues = false;
 	bool printVTU = false;
+	bool time_pressure_solver = true;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
 	
@@ -72,7 +73,7 @@ try
 	double ddummy; bool bdummy;
 	if(argc > 1)
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
-					   dx, dy, dz, nx, ny, nz, solver_type, printVTU, printIterations, nprint, 
+					   dx, dy, dz, nx, ny, nz, solver_type, time_pressure_solver, printVTU, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, zpos, xpos_double, ypos_double, ddummy, bdummy,
 					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxValues);
 	xpos = (int)xpos_double;
@@ -171,17 +172,27 @@ try
 	
 	std::vector<int>::iterator it = print_points.begin();
 	time::StopWatch clock;
-	clock.start();
+	double cputime = 0;
+	if(time_pressure_solver)
+		clock.start();
     for (int i = 0; i < num_time_steps; ++i) {
 		if(verbose)
 			std::cout << "*** Solving step " << i+1 << " of " << num_time_steps << " ***\n";
 		if(verbose)
 			std::cout << "Solving pressure system ...\n";
         psolver.solve(dt, state, well_state);
+        
         if(verbose)
 			std::cout << "Solving transport system:\n";
+		if(!time_pressure_solver)
+			clock.start();
         transport_solver.solve(&porevol[0], &src[0], dt, state);
-        
+        if(!time_pressure_solver)
+		{
+			clock.stop();
+			cputime += clock.secsSinceStart();
+		}
+		
         if(solve_gravity_column)
         {
 			if(verbose)
@@ -200,8 +211,12 @@ try
 		//if(i==1)
 		//return 0;
     }
-    clock.stop();
-    std::cout << "Problem solved in " << clock.secsSinceStart() << " seconds \n";
+    if(time_pressure_solver)
+    {
+		clock.stop();
+		cputime = clock.secsSinceStart();
+	}
+    std::cout << "Problem solved in " << cputime << " seconds \n";
 }
 catch (const std::exception &e) {
     std::cerr << "Program threw an exception: " << e.what() << "\n";
