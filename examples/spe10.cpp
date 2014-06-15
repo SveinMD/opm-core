@@ -53,13 +53,15 @@ try
 	double grav_y = 0;
 	double grav_z = 0;
 	double tol = 1e-9;
+	double denswater = 1000.0, densoil = 800.0;
 	
 	bool verbose = false;
-	bool printIterations = false;
 	bool solve_gravity_column = false;
 	bool useInitialGuessApproximation = false;
 	bool printFluxValues = false;
 	bool printVTU = false;
+	bool printIterations = false;
+	bool printIterOrVtu = false;
 	bool time_pressure_solver = true;
 	
 	Opm::RootFinderType solver_type = Opm::RegulaFalsiType;
@@ -75,10 +77,10 @@ try
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, time_pressure_solver, printVTU, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, zpos, xpos_double, ypos_double, ddummy, bdummy,
-					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxValues);
+					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxValues,denswater,densoil);
 	xpos = (int)xpos_double;
 	ypos = (int)ypos_double;
-	
+	printIterOrVtu = printIterations || printVTU;
 	if(verbose)
 		std::cout << "----------------- Initializing problem -------------------\n";
 	
@@ -92,8 +94,8 @@ try
     int num_phases = 2;
     using namespace Opm::unit;
     using namespace Opm::prefix;
-    std::vector<double> density(num_phases, 1000.0);
-    density[1] = 800.0;
+    std::vector<double> density(num_phases, denswater);
+    density[1] = densoil;
     double visc_arr[] = {muw*centi*Poise, muo*centi*Poise};
     std::vector<double> viscosity(visc_arr, visc_arr + sizeof(visc_arr)/sizeof(double));
     double porosity = 0.5;
@@ -105,7 +107,7 @@ try
     
     const double grav_arr [] = {grav_x, grav_y, grav_z};
     const double *grav = &grav_arr[0];
-    solve_gravity_column = ( fabs(density[1]-density[0]) > 0.0 ) && ( fabs(grav_x)+fabs(grav_y)+fabs(grav_z) > 0.0 );
+    solve_gravity_column = ( fabs( density[1]-density[0] ) > 0.0 ) && ( fabs(grav_x)+fabs(grav_y)+fabs(grav_z) > 0.0 );
     std::vector<double> omega;
     
     std::vector<double> porevol;
@@ -114,15 +116,15 @@ try
 	double injectedFluidAbsolute = srcVol;
 	double injectedFluidPoreVol = injectedFluidAbsolute/porevol[0];
     std::vector<double> src(num_cells, 0.0);
-    //src[0] = injectedFluidPoreVol;
-    //src[num_cells-1] = -injectedFluidPoreVol;
-	for(int l/*ayer*/ = 0; l < nz; l++)
+    src[0] = injectedFluidPoreVol;
+    src[num_cells-1] = -injectedFluidPoreVol;
+	/*for(int l = 0; l < nz; l++)
 	{
 		int cell_src = l*nx*ny;
 		int cell_sink = cell_src + nx*ny - 1;
 		src[cell_src] = injectedFluidPoreVol;
 		src[cell_sink] = -injectedFluidPoreVol;
-	}
+	}*/
 
     FlowBCManager bcs;
 	
@@ -156,7 +158,7 @@ try
     std::ostringstream vtkfilename;
 	
 	std::vector<int> print_points;
-	if(printIterations)
+	if(printVTU)
 	{
 		if(nprint == NPRINT)
 			nprint = num_time_steps;
@@ -200,12 +202,15 @@ try
 			transport_solver.solveGravity(&porevol[0], dt, state);
 		}
         
-        if(printIterations && it != print_points.end() && *it == i)
+        if(printIterOrVtu)
 		{
-			it++;
-			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days, viscosity[0]/viscosity[1]);
-			if(printVTU)
+			if(printIterations)
+				printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days, viscosity[0]/viscosity[1]);
+			if(printVTU && it != print_points.end() && *it == i)
+			{
+				it++;
 				printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_type, comp_length_days, time_step_days, i);
+			}
 		}
 		
 		//if(i==1)

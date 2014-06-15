@@ -54,12 +54,14 @@ try
 	double grav_y = 0;
 	double grav_z = 0;
 	double tol = 1e-9;
+	double ddummy = 0.0;
 	
 	bool verbose = false;
-	bool printIterations = false;
 	bool printFluxData = false;
 	bool useInitialGuessApproximation = false;
 	bool printVTU = false;
+	bool printIterations = false;
+	bool printIterOrVtu = false;
 	bool time_pressure_solver = true;
 	bool bdummy;
 	
@@ -75,7 +77,9 @@ try
 		parseArguments(argc, argv, muw, muo, verbose, time_step_days, comp_length_days, 
 					   dx, dy, dz, nx, ny, nz, solver_type, time_pressure_solver, printVTU, printIterations, nprint, 
 					   print_points_file_name, perm_file_name, layer, xpos, ypos, perm_mD, bdummy,
-					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxData);
+					   srcVol, sinkVol, grav_x, grav_y, grav_z, tol, bdummy, bdummy, useInitialGuessApproximation, printFluxData,ddummy,ddummy);
+	
+	printIterOrVtu = printIterations || printVTU;
 	
 	if(verbose)
 		std::cout << "----------------- Initializing problem -------------------\n";
@@ -144,7 +148,7 @@ try
     std::ostringstream vtkfilename;
 	
 	std::vector<int> print_points;
-	if(printIterations)
+	if(printVTU)
 	{
 		if(nprint == NPRINT)
 			nprint = num_time_steps;
@@ -182,12 +186,15 @@ try
 			cputime += clock.secsSinceStart();
 		}
 		
-        if(printIterations && it != print_points.end() && *it == i)
+        if(printIterOrVtu)
 		{
-			it++;
-			printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days, viscosity[0]/viscosity[1]);
-			if(printVTU)
+			if(printIterations)
+				printIterationsFromVector(execName, transport_solver, i, num_cells, solver_type, comp_length_days, time_step_days, viscosity[0]/viscosity[1]);
+			if(printVTU && it != print_points.end() && *it == i)
+			{
+				it++;
 				printStateDataToVTKFile(execName, vtkfilename, state, grid, solver_type, comp_length_days, time_step_days, i);
+			}
 		}
     }
     if(time_pressure_solver)
