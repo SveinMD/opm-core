@@ -193,7 +193,7 @@ namespace Opm
         void mobility(double s, int cell, double* mob, double * dmob) const;
 		
 		void constructFileNameFromParams(std::ostringstream & filename, std::string solver_type, double M, double dtpv, double in, double out, double s0);
-		void selectSolverAndSolve(const int cell, double s0, Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path);
+		template <class Functor> void selectSolverAndSolve(const int cell, double s0, double sl, double sr, /*Residual*/ Functor & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path);
 		
 		bool useInitialGuessApproximation_;
 		bool printFluxValues_;

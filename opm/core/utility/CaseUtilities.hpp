@@ -59,8 +59,9 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 					double & dx, double & dy, double & dz, int & nx, int & ny, int & nz, RootFinderType & solver_type, 
 					bool & timePressure, bool & printVTU, bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
-					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z,
-					double & tolerance, bool & initBottomTop, bool & initLeftRight, bool & initSatApprox, bool & printFluxData);
+					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z, 
+					double & tolerance, bool & initBottomTop, bool & initLeftRight, bool & initSatApprox, bool & printFluxData,
+					double & densw, double & denso);
 void constructCacheFileName(std::ostringstream & filename, int layer, 
 							double xstart, double xsize, int xnum, 
 							double ystart, double ysize, int ynum);

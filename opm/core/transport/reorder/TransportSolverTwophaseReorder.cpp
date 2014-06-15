@@ -51,7 +51,7 @@ namespace Opm
 {
     // Choose error policy for scalar solves here.
     typedef RegulaFalsi<WarnAndContinueOnError> RootFinder;
-    //typedef NewtonRaphson<WarnAndContinueOnError> RootFinder;
+    //typedef NewtonRaphsonTrustRegion<WarnAndContinueOnError> RootFinder;
 	
 	TransportSolverTwophaseReorder::TransportSolverTwophaseReorder(const UnstructuredGrid& grid,
                                                                    const Opm::IncompPropertiesInterface& props,
@@ -307,6 +307,18 @@ namespace Opm
         {
 			return 1 + dtpv*outflux*tm.fracFlowDerivative(s,cell);
 		}
+		double d2s(double s) const
+        {
+			double mobcell[2];
+            double dmobcell[2];
+            tm.mobility(s, cell, mobcell, dmobcell);
+			double msum = mobcell[0] + mobcell[1];
+			double msum2 = msum*msum;
+			double dmsum = dmobcell[0] + dmobcell[1];
+			double viscfrac = 1.0/tm.visc_[0] + 1.0/tm.visc_[1];
+			return dtpv*outflux*2*(msum2/tm.visc_[0] - msum*dmobcell[0]*dmsum + mobcell[0]*(dmsum*dmsum - viscfrac*msum))/(msum2*msum);
+			//return 2*(msum2/tm.visc_[0] - msum*dmobcell[0]*dmsum + mobcell[0]*(dmsum*dmsum - viscfrac*msum))/(msum2*msum);
+		}
     };
 
 	struct TransportSolverTwophaseReorder::ResidualParameters
@@ -445,7 +457,7 @@ namespace Opm
 					
 					solutionPath.clear();
 					iters_used = 0;
-					selectSolverAndSolve(cell,param.s0_,res,iters_used,true,solutionPath);
+					selectSolverAndSolve(cell,param.s0_,0.0,1.0,res,iters_used,true,solutionPath);
 					
 					// Print the convergence paths to pgf input files
 					std::ostringstream filename;
@@ -540,7 +552,7 @@ namespace Opm
 			//std::cout << "dt: " << this->dt_ << "pv: " << this->porevolume_[cell] << "dtpv: " << res.dtpv << "\n";
 		}
 		
-        selectSolverAndSolve(cell,s0_mod,res,iters_used,false,solutionPath);
+        selectSolverAndSolve(cell,s0_mod,0,1,res,iters_used,false,solutionPath);
         
         if(printFluxValues_)
         {
@@ -556,7 +568,7 @@ namespace Opm
 			         << "-" << visc_[1]/cP;
 			std::ostringstream filename;
 			filename << replaceDot(base.str()) << ".dat";
-			std::ofstream file; 
+			std::ofstream file;
 			file.open(filename.str().c_str(),std::ios::app);
 			file << std::left << std::setw(8) << res.s0 << "\t" 
 				 << std::left << std::setw(8) << s0_mod << "\t" 
@@ -571,7 +583,8 @@ namespace Opm
         fractionalflow_[cell] = fracFlow(saturation_[cell], cell);
     }
     
-    void TransportSolverTwophaseReorder::selectSolverAndSolve(const int cell, double s0, TransportSolverTwophaseReorder::Residual & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
+    template <class Functor>
+    void TransportSolverTwophaseReorder::selectSolverAndSolve(const int cell, double s0, double sl, double sr, /*TransportSolverTwophaseReorder::Residual*/ Functor & res, int & iters_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
     {
 		if(NewtonRaphsonType == solver_type_)
 			saturation_[cell] = NewtonRaphson<ThrowOnError>::solve(res, s0, maxit_, tol_, getVerbose(), iters_used);
@@ -587,15 +600,15 @@ namespace Opm
 			saturation_[cell] = NewtonRaphsonTrustRegion<ThrowOnError>::solveApprox(res, s0, M, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
 		}
 		else if(RiddersType == solver_type_)
-			saturation_[cell] = Ridder<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+			saturation_[cell] = Ridder<ThrowOnError>::solve(res, s0, sl, sr, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
 		else if(BrentType == solver_type_)
-			saturation_[cell] = Brent<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+			saturation_[cell] = Brent<ThrowOnError>::solve(res, s0, sl, sr, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
 		else if(GlobalizedNewtonType == solver_type_)
-			saturation_[cell] = GlobalizedNewton<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
+			saturation_[cell] = GlobalizedNewton<ThrowOnError>::solve(res, s0, sl, sr, maxit_, tol_, getVerbose(), iters_used,isTestRun,solution_path);
         else if(RegulaFalsiType == solver_type_)
-			saturation_[cell] = RegulaFalsi<ThrowOnError>::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used,getVerbose(),isTestRun,solution_path);
+			saturation_[cell] = RegulaFalsi<ThrowOnError>::solve(res, s0, sl, sr, maxit_, tol_, iters_used,getVerbose(),isTestRun,solution_path);
         else
-			saturation_[cell] = RootFinder::solve(res, s0, 0.0, 1.0, maxit_, tol_, iters_used,getVerbose(),isTestRun,solution_path);
+			saturation_[cell] = RootFinder::solve(res, s0, sl, sr, maxit_, tol_, iters_used,getVerbose(),isTestRun,solution_path);
 	}
     
     void TransportSolverTwophaseReorder::constructFileNameFromParams(std::ostringstream & filename, std::string solver_type, double M, double dtpv, double in, double out, double s0)
@@ -708,6 +721,7 @@ namespace Opm
             OPM_THROW(std::runtime_error, "In solveMultiCell(), we did not converge after "
                   << num_iters << " iterations. Delta s = " << max_s_change);
         }
+        if(getVerbose())
         std::cout << "Solved " << num_cells << " cell multicell problem in "
                   << num_iters << " iterations." << std::endl;
 #endif // EXPERIMENT_GAUSS_SEIDEL
@@ -1122,6 +1136,35 @@ namespace Opm
             }
             return res;
         }
+        double operator()(double s, double & dres) const
+        {
+			double res = s - s0;
+			dres = 1;
+            double mobcell[2];
+            double dmobcell[2];
+            tm.mobility(s, cell, mobcell, dmobcell);
+            for (int nb = 0; nb < 2; ++nb) {
+                if (nbcell[nb] != -1) {
+                    double mob,dmob,mobupw;
+                    if (gf[nb] < 0.0) {
+                        mob = mobcell[0];
+                        mobupw = tm.mob_[2*nbcell[nb] + 1]; // Phase based upwind 
+                        dmob = dmobcell[0];
+                    } else {
+                        mobupw = tm.mob_[2*nbcell[nb]]; // Phase based upwind 
+                        mob = mobcell[1];
+                        dmob = dmobcell[1];
+                    }
+                    double msum = mob + mobupw;
+                    if (msum > 0.0) {
+						double mobfrac = -dtpv*gf[nb]*mobupw/msum;
+                        dres += mobfrac*dmob*(1-mob/msum);
+                        res += mobfrac*mob;
+                    }
+                }
+            }
+            return res;
+		}
         double ds(double s) const
         {
 			double res = 1;
@@ -1148,35 +1191,34 @@ namespace Opm
             }
             return res;
 		}
-        /*double ds(double s) const
+		double d2s(double s) const
         {
-			double res = 1;
+			double res = 0;
             double mobcell[2];
             double dmobcell[2];
             tm.mobility(s, cell, mobcell, dmobcell);
             for (int nb = 0; nb < 2; ++nb) {
                 if (nbcell[nb] != -1) {
-                    double m[2];
-                    double dm[2];
+                    double mob,dmob,mobupw;
                     if (gf[nb] < 0.0) {
-                        m[0] = mobcell[0];
-                        m[1] = tm.mob_[2*nbcell[nb] + 1]; // The rhs is constant wrt s_w!
-                        dm[0] = dmobcell[0];
-                        dm[1] = 0; //tm.dmob_[2*nbcell[nb] + 1];
+                        mob = mobcell[0];
+                        mobupw = tm.mob_[2*nbcell[nb] + 1]; // Phase based upwind 
+                        dmob = dmobcell[0];
                     } else {
-                        m[0] = tm.mob_[2*nbcell[nb]]; // The rhs is constant wrt s_w!
-                        m[1] = mobcell[1];
-                        dm[0] = 0; //tm.dmob_[2*nbcell[nb]];
-                        dm[1] = dmobcell[1];
+                        mobupw = tm.mob_[2*nbcell[nb]]; // Phase based upwind 
+                        mob = mobcell[1];
+                        dmob = dmobcell[1];
                     }
-                    double msum = m[0] + m[1];
+                    double msum = mob + mobupw;
                     if (msum > 0.0) {
-                        res += -dtpv*gf[nb]*( (dm[0]*m[1]+m[0]*dm[1])*msum - (dm[0]+dm[1])*m[0]*m[1] )/( msum*msum );
+						double msum3 = msum*msum*msum;
+						double mobupw2 = 2*mobupw*mobupw;
+                        res += -dtpv*gf[nb]*mobupw2*(mobupw + mob - dmob*dmob)/msum3;
                     }
                 }
             }
             return res;
-		}*/
+		}
     };
 
     void TransportSolverTwophaseReorder::mobility(double s, int cell, double* mob, double* dmob) const
@@ -1229,7 +1271,7 @@ namespace Opm
         const int cell = cells[pos];
         GravityResidual res(*this, cells, pos, gravflux);
         
-        bool printgravres = true;
+        bool printgravres = false;
         if(printgravres)
         {
 			int ns = 100; //numberofsatpoints;
@@ -1264,7 +1306,11 @@ namespace Opm
         
         if (std::fabs(res(saturation_[cell])) > tol_) {
             int iters_used = 0;
-            saturation_[cell] = RootFinder::solve(res, smin_[2*cell], smax_[2*cell], maxit_, tol_, iters_used);
+            //saturation_[cell] = RootFinder::solve(res, smin_[2*cell], smax_[2*cell], maxit_, tol_, iters_used);
+            std::vector<std::pair<double,double>> solutionPath;
+			double s0 = (smin_[2*cell]+smax_[2*cell])/2;
+			selectSolverAndSolve(cell,s0,smin_[2*cell],smax_[2*cell],res,iters_used,false,solutionPath);
+					
             reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         }
         saturation_[cell] = std::min(std::max(saturation_[cell], smin_[2*cell]), smax_[2*cell]);
@@ -1358,6 +1404,7 @@ namespace Opm
 			//std::cout << std::endl;
             num_iters += solveGravityColumn(columns_[i]);
         }
+        if(getVerbose())
         std::cout << "Gauss-Seidel column solver average iterations: "
                   << double(num_iters)/double(columns_.size()) << std::endl;
 

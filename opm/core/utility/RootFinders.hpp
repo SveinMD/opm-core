@@ -607,7 +607,7 @@ namespace Opm
 				xNew = x - f(x)/f.ds(x);
 				
 				xCorr = std::max(std::min(xNew,1.0),0.0);
-				if(f.ds2(xCorr)*f.ds2(x) < 0.0)
+				if(f.d2s(xCorr)*f.d2s(x) < 0.0)
 					xCorr = (xCorr+x)/2.0;
 				
 				if (verbose) printf("%d\t%8.2e\t%8.3e\t%8.2e\t%8.2e \n",iterations_used,xNew,xCorr,f(x),f.ds(x));
@@ -632,7 +632,7 @@ namespace Opm
 								   const bool verbose,
 								   int& iterations_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
         {
-            double x = initial_guess + 1 + 2*tolerance;
+            double x = initial_guess;
             double xNew = initial_guess;
             double dfx = -1.0;
             double fx = f(xNew,dfx);
@@ -671,7 +671,7 @@ namespace Opm
 			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
 		}
 		
-		/*/// Trust region solver
+		/// Trust region solver
 		/// Uses supplied viscosity ratio for trust region scheme
 		/// Requires a precomputed f_w inflection point as argument.
 		template <class Functor>
@@ -682,14 +682,12 @@ namespace Opm
 								   const int max_iter,
 								   const double tolerance,
 								   const bool verbose,
-								   int& iterations_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path)
+								   int& iterations_used, bool isTestRun, std::vector<std::pair<double,double>> & solution_path, bool dummy)
         {
             double x = initial_guess + 1 + 2*tolerance;
             double xNew = initial_guess;
-            double dfx = -1.0;
-            double fx = f(xNew,dfx);
-            //double d2fw_inflec = visc_ratio*(2*inflec+1)*(inflec-1)*(inflec-1)+inflec*inflec*(2*inflec-3);
-            //std::cout << "d2fw_inflec: " << d2fw_inflec << "\n";
+            double dfx = f.ds(xNew);
+            double fx = f(xNew);
             
             if(verbose)
             std::cout << "----------------------- Newton Trust Region iteration ---------------------------\n"
@@ -697,68 +695,35 @@ namespace Opm
                       << "Max iterations: " << max_iter << "\n"
                       << "Error tolerance: " << tolerance << "\n"
                       << "Inflection point: " << inflec << "\n"
-                      //<< "Func. val. at inflec: " << d2fw_inflec << "\n"
                       << "# iter.\tx\t\tf(x)\t\tf_x(x) \n";
             
-            //if(verbose)
-            //{
-				//std::cout << "Viscosity ratio: " << visc_ratio << "\n";
-	            //double thePoint = 0.4;
-	            //std::string line;
-	            //std::ifstream infile("pointdata.txt");
-	            //if(infile.is_open())
-	            //{
-					//if( getline(infile,line) )
-						//thePoint = atof(line.c_str());
-					//infile.close();
-				//}
-				//double xval;
-	            //double xmin = 0; double xmax = 1;
-	            //int n_points = 150;
-	            //std::ofstream file;
-	            //file.open("cell_residual.txt");
-	            //for ( int i = 0; i <= n_points; i++)
-	            //{
-					//xval = (xmax-xmin)/n_points*i;
-					//file << xval << "\t" << f(xval) << "\t" << f.ds(xval) << "\t" << fw(xval,visc_ratio) << "\t" << dfw2(xval,visc_ratio) << "\t" << f(thePoint) + f.ds(thePoint)*(xval-thePoint) << "\n";
-				//}
-				//file.close();
-			//}
-            
-            if(isTestRun)
-				addPointToVector(xNew,fx,solution_path); // REMOVE FOR SPEED TESTS
-            
-            while (fabs(fx) > tolerance && fabs(x-xNew) > tolerance)
+            for(int i = 0; i < max_iter; i++)
             {
-				++iterations_used;
 				x = xNew;
-				if (iterations_used > max_iter)
-				{
-					//PrintFunctor<Functor>::printFunctorValues(f, 100, "residual_fail.data");
-                    return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
-				}
-                
+				
 				xNew = x - fx/dfx; // Scalar Newton method
-				//xNew = std::max(std::min(xNew,1.0),0.0); // Restrict to interval [0,1]
-				if(xNew > 1.0) xNew = 1.0;
+				++iterations_used;
+				if(xNew > 1.0) xNew = 1.0; // Restrict to domain
 				else if(xNew < 0.0) xNew = 0.0;
-				//if( (inflec-xNew)*(inflec-x) < 0 ) // Trust Region
 				if( (xNew < inflec) == (x > inflec) ) // Trust Region
 					xNew = inflec;
 				
 				if (verbose)
 					printf("%d\t%8.2e\t%8.2e\t%8.2e \n",iterations_used,xNew,f(xNew),f.ds(xNew));
 				
-				fx = f(xNew,dfx);
-				if(isTestRun)
-					addPointToVector(xNew,fx,solution_path); // REMOVE FOR SPEED TESTS
+				if(fabs(xNew-x) < tolerance)
+					return xNew;
+				
+				fx = f(xNew);
+				dfx = f.ds(xNew);
+				
+				if(fabs(fx) < tolerance)
+					return xNew;
 			}
-			if(verbose)
-				std::cout << "---------------------- End Newton iteration ------------------------\n";
-			
-            return xNew;
-		}*/
-		
+			if( fabs(fx) < tolerance ) return xNew;
+			return ErrorPolicy::handleTooManyIterationsNewton(x, max_iter, f(x));
+		}
+				
 		/// Trust region solver
 		/// Uses supplied viscosity ratio for trust region scheme
 		/// Assumes quadratic relative permeability 
@@ -779,27 +744,6 @@ namespace Opm
             
             if(isTestRun)
 				addPointToVector(xNew,fx,solution_path); // REMOVE WHEN TESTING SPEED
-            
-            /*double thePoint = 0.4;
-            std::string line;
-            std::ifstream infile("pointdata.txt");
-            if(infile.is_open())
-            {
-				if( getline(infile,line) )
-					thePoint = atof(line.c_str());
-				infile.close();
-			}
-			double xval;
-            double xmin = 0; double xmax = 1;
-            int n_points = 150;
-            std::ofstream file;
-            file.open("cell_residual.txt");
-            for ( int i = 0; i <= n_points; i++)
-            {
-				xval = (xmax-xmin)/n_points*i;
-				file << xval << "\t" << f(xval) << "\t" << f.ds(xval) << "\t" << fw(xval,visc_ratio) << "\t" << dfw2(xval,visc_ratio) << "\t" << f(thePoint) + f.ds(thePoint)*(xval-thePoint) << "\n";
-			}
-			file.close();*/
             
             if(verbose)
             std::cout << "----------------------- Newton Trust Region iteration ---------------------------\n"
@@ -822,7 +766,7 @@ namespace Opm
 				xNew = std::max(std::min(xNew,1.0),0.0);
 				
 				// Trust Region
-				if( (dfw2(xNew,visc_ratio) < 0.0) != (dfw2(x,visc_ratio) < 0.0) )
+				if( (f.d2s(xNew) < 0.0) != (f.d2s(x) < 0.0) )
 					xNew = (xNew+x)/2.0;
 				
 				if (verbose)
@@ -835,24 +779,7 @@ namespace Opm
 			if(verbose)
 				std::cout << "---------------------- End Newton iteration ------------------------\n";
 			
-			
             return x;
-		}
-		
-		inline static double fw(double x, double M)
-		{
-			double x2 = pow(x,2.0);
-			return x2/(x2+M*pow((1-x),2.0));
-		}
-		inline static double dfw(double x, double M)
-		{
-			return 2*M*x*(1-x)/pow( M*pow(x-1,2.0) + pow(x,2.0), 2.0);
-		}
-		inline static double dfw2(double x, double M)
-		{
-			double x2 = pow(x,2.0);
-			double xm2 = pow(x-1,2.0);
-			return 2*M*( M*(2*x+1)*xm2 + x2*(2*x-3) )/pow(M*xm2 + x2, 3.0);
 		}
 	};
 

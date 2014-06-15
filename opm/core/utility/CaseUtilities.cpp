@@ -85,7 +85,8 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 					bool & timePressure, bool & printVTU, bool & printIterations, int & nprint, string & print_points_file_name,
 					string & perm_file_name, int & layer, double & xpos, double & ypos, double & perm, bool & is_inhom_perm, 
 					double & srcVol, double & sinkVol, double & grav_x, double & grav_y, double & grav_z, 
-					double & tolerance, bool & initBottomTop, bool & initLeftRight, bool & initSatApprox, bool & printFluxData)
+					double & tolerance, bool & initBottomTop, bool & initLeftRight, bool & initSatApprox, bool & printFluxData,
+					double & densw, double & denso)
 {
 	// -n: Newton solver
 	// -r: Regula Falsi
@@ -158,7 +159,7 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 		{
 			dx = std::atof(argv[++i]);
 			dy = std::atof(argv[++i]);
-			dx = std::atof(argv[++i]);
+			dz = std::atof(argv[++i]);
 			nx = std::atoi(argv[++i]);
 			ny = std::atoi(argv[++i]);
 			nz = std::atoi(argv[++i]);
@@ -209,6 +210,11 @@ void parseArguments(int argc, char ** argv, double & muw, double & muo,
 			printFluxData = true;
 		else if(std::string(argv[i]) == "--timetrans")
 			timePressure = false;
+		else if(std::string(argv[i]) == "--dens")
+		{
+			densw = std::atof(argv[++i]);
+			denso = std::atof(argv[++i]);
+		}
 		else
 			std::cerr << "Invalid argument " << argv[i] << " passed to " << argv[0] << "\n";
 	}
