@@ -226,17 +226,18 @@ try
 		if(!time_pressure_solver)
 			clock.start();
         transport_solver.solve(&porevol[0], &src[0], dt, state);
-        if(!time_pressure_solver)
-		{
-			clock.stop();
-			cputime += clock.secsSinceStart();
-		}
 		
         if(solve_gravity_column)
         {
 			if(verbose)
 				std::cout << "Solving gravity transport system:\n";
 			transport_solver.solveGravity(&porevol[0], dt, state);
+		}
+		
+		if(!time_pressure_solver)
+		{
+			clock.stop();
+			cputime += clock.secsSinceStart();
 		}
         
         if(printIterOrVtu)
