@@ -489,30 +489,26 @@ namespace Opm
         double s0_mod = saturation_[cell];
         if(this->useInitialGuessApproximation_ || printFluxValues_)
         {
-			//std::cout << "s0:" << res.s0;
 			if(res.influx == 0.0)
-				s0_mod = res.s0;
+			{
+				if(res.outflux*res.dtpv > 10)
+					s0_mod = 0;
+			}
+			else if(res.outflux == 0)
+				s0_mod = 1;
 			else
 			{
-				double rq = res.outflux/res.influx;
-				double M = visc_[0]/visc_[1];
-				/*if(fabs(rq) == 1 && M < 1) s0_mod = 0.5;
-				else if(fabs(rq) == 1) s0_mod = 1;
-				else
-				{
-					double rqm = (rq+1)/M;
-					s0_mod = ( 1.0 - sqrt(fabs(rqm)) )/(1+rqm);
-					//std::cout << "rq: " << rq << ", M: " << M << ", s0_mod: " << s0_mod << std::endl;
-				}*/
-				if(/*fabs(rq) != 1 &&*/ fabs(res.outflux*res.dtpv) >= 100)
-				{
+				//std::cout << res.dtpv*res.outflux << "\n";
+				//if(res.dtpv*res.outflux > 10)
+				//{
+					std::cout << "Init approx\n";
+					double rq = res.outflux/res.influx;
+					double M = visc_[0]/visc_[1];
 					double rqm = (rq+1)/M;
 					if(rqm == -1) s0_mod = 0.5;
 					else s0_mod = ( 1.0 - sqrt(fabs(rqm)) )/(1+rqm);
-					//std::cout << "rq: " << rq << ", M: " << M << ", s0_mod: " << s0_mod << std::endl;
-				}
+				//}
 			}
-			//std::cout << " s0_new: " << res.s0 << "\n";
 		}
         
         if(printFluxValues_)
@@ -1117,7 +1113,6 @@ namespace Opm
             double res = s - s0;
             double mobcell[2];
             tm.mobility(s, cell, mobcell,0);
-            //std::cout << "cell: " << cell << "\n";
             for (int nb = 0; nb < 2; ++nb) {
                 if (nbcell[nb] != -1) {
                     double m[2];
@@ -1128,7 +1123,6 @@ namespace Opm
                         m[0] = tm.mob_[2*nbcell[nb]];
                         m[1] = mobcell[1];
                     }
-                    //std::cout << nb << ", " << gf[nb] << ", " << s << "," << s0 << ", " << m[0] << "," << m[1] << "\n";
                     if (m[0] + m[1] > 0.0) {
                         res += -dtpv*gf[nb]*m[0]*m[1]/(m[0] + m[1]);
                     }
@@ -1139,7 +1133,7 @@ namespace Opm
         double operator()(double s, double & dres) const
         {
 			double res = s - s0;
-			dres = 1;
+			dres = 1.0;
             double mobcell[2];
             double dmobcell[2];
             tm.mobility(s, cell, mobcell, dmobcell);
@@ -1167,7 +1161,7 @@ namespace Opm
 		}
         double ds(double s) const
         {
-			double res = 1;
+			double res = 1.0;
             double mobcell[2];
             double dmobcell[2];
             tm.mobility(s, cell, mobcell, dmobcell);
@@ -1193,7 +1187,7 @@ namespace Opm
 		}
 		double d2s(double s) const
         {
-			double res = 0;
+			double res = 0.0;
             double mobcell[2];
             double dmobcell[2];
             tm.mobility(s, cell, mobcell, dmobcell);
@@ -1212,8 +1206,10 @@ namespace Opm
                     double msum = mob + mobupw;
                     if (msum > 0.0) {
 						double msum3 = msum*msum*msum;
-						double mobupw2 = 2*mobupw*mobupw;
-                        res += -dtpv*gf[nb]*mobupw2*(mobupw + mob - dmob*dmob)/msum3;
+						//double mobupw2 = 2.0*mobupw*mobupw;
+                        //res += -dtpv*gf[nb]*mobupw2*(msum - dmob*dmob)/msum3;
+                        double mobupw2 = mobupw*mobupw;
+                        res += -dtpv*gf[nb]*mobupw2*2.0*(msum - dmob*dmob)/msum3;
                     }
                 }
             }
@@ -1277,26 +1273,26 @@ namespace Opm
 			int ns = 100; //numberofsatpoints;
 			//for(int c = 0; c < grid_.number_of_cells; c++)
 			//{
+				std::string sp = ", ";
 				std::ostringstream filename;
 				filename << "residual-data-cell-" << cell << ".data";
 				std::ofstream residual_file(filename.str().c_str());
 				residual_file.precision(15);
 				
-				residual_file << "dt, dtpv, s0, gf1, gf2, mob1_w, mob1_o, mob2_w, mob2_o, visc_w, visc_o \n";
-				std::string sp = ", ";
-				
+				/*residual_file << "dt, dtpv, s0, gf1, gf2, mob1_w, mob1_o, mob2_w, mob2_o, visc_w, visc_o \n";
 				residual_file<<this->dt_<<sp<<res.dtpv<<sp<<res.s0<<sp<<res.gf[0]<<sp<<res.gf[1]<<sp<<this->mob_[2*res.nbcell[0]]<<sp<<this->mob_[2*res.nbcell[0]+1]<<sp<<this->mob_[2*res.nbcell[1]]<<sp<<this->mob_[2*res.nbcell[1]+1]<<sp<<visc_[0]<<sp<<visc_[1]<<"\n";
+				*/
 				residual_file.close();
 				
 				filename.str("");
 				filename.clear();
 				filename << "gravres-cell-" << cell << ".data";
 				residual_file.open(filename.str().c_str());
-				residual_file << "snp, Rnp, dRnp\n";
+				residual_file << "snp, Rnp, dRnp, d2Rnp\n";
 				for(int i = 0; i < ns; i++)
 				{
 					double sat = (double)i/(ns-1);
-					residual_file<<sat<<sp<<res(sat)<<sp<<res.ds(sat)<<"\n";					
+					residual_file<<sat<<sp<<res(sat)<<sp<<res.ds(sat)<<sp<<res.d2s(sat)<<"\n";					
 				}
 				residual_file.close();
 			//}
@@ -1313,6 +1309,26 @@ namespace Opm
 					
             reorder_iterations_[cell] = reorder_iterations_[cell] + iters_used;
         }
+        
+        if(printFluxValues_)
+        {
+			double stemp = saturation_[cell];
+			double cP = Opm::prefix::centi*Opm::unit::Poise;
+			std::ostringstream base;
+			base << std::fixed << std::setprecision(0);
+			base << "gravity_saturation_values-s-" << getIdentifierFromSolverType(this->solver_type_)
+			         << "-dt-" << this->dt_/Opm::unit::day
+			         << "-m-" << visc_[0]/cP
+			         << "-" << visc_[1]/cP;
+			std::ostringstream filename;
+			filename << replaceDot(base.str()) << ".dat";
+			std::ofstream file;
+			file.open(filename.str().c_str(),std::ios::app);
+			file << std::left << std::setw(8) << res.s0 << "\t"
+				 << std::left << std::setw(8) << stemp << "\t";
+			file.close();
+		}
+        
         saturation_[cell] = std::min(std::max(saturation_[cell], smin_[2*cell]), smax_[2*cell]);
         mobility(saturation_[cell], cell, &mob_[2*cell], &dmob_[2*cell]);
     }
