@@ -501,7 +501,7 @@ namespace Opm
 				//std::cout << res.dtpv*res.outflux << "\n";
 				//if(res.dtpv*res.outflux > 10)
 				//{
-					std::cout << "Init approx\n";
+					//std::cout << "Init approx\n";
 					double rq = res.outflux/res.influx;
 					double M = visc_[0]/visc_[1];
 					double rqm = (rq+1)/M;
